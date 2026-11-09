@@ -38,6 +38,8 @@ struct PromptTracker {
     private(set) var phase = Phase.instructions
     /// Whether macOS has asked the user to authenticate during this guide.
     private var sawAuthentication = false
+    /// What each window seen so far was taken for, by window number.
+    private var seenWindows: [Int: Prompt] = [:]
 
     var isShowingRelaunchPrompt: Bool {
         if case .prompt(.relaunch) = phase { true } else { false }
@@ -47,9 +49,15 @@ struct PromptTracker {
     /// relaunch alert has just closed.
     mutating func update(_ seen: SystemSettings.Prompt?) -> Bool {
         if let seen {
-            // The same window as last tick is the same prompt.
-            if case .prompt(let shown) = phase, shown.frame == seen.frame { return false }
-            phase = .prompt(classify(seen))
+            // A window seen before is the same prompt, even as it zooms in or out or
+            // briefly drops out of the window list. Only its frame changes.
+            let prompt: Prompt = switch seenWindows[seen.window] {
+            case .authentication?: .authentication(seen.frame)
+            case .relaunch?: .relaunch(seen.frame)
+            case nil: classify(seen)
+            }
+            seenWindows[seen.window] = prompt
+            phase = .prompt(prompt)
             return false
         }
         switch phase {
@@ -78,10 +86,10 @@ struct PromptTracker {
     /// alert is about 220 pt.
     private mutating func classify(_ prompt: SystemSettings.Prompt) -> Prompt {
         switch prompt {
-        case .authentication(let frame):
+        case .authentication(let frame, _):
             sawAuthentication = true
             return .authentication(frame)
-        case .panel(let frame):
+        case .panel(let frame, _):
             if !sawAuthentication || frame.height >= 250 {
                 sawAuthentication = true
                 return .authentication(frame)

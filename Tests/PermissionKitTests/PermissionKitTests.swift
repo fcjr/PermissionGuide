@@ -4,9 +4,9 @@ import Testing
 @testable import PermissionKit
 
 private let window = NSRect(x: 0, y: 0, width: 800, height: 600)
-private let touchID = SystemSettings.Prompt.panel(NSRect(x: 260, y: 160, width: 280, height: 273))
-private let alert = SystemSettings.Prompt.panel(NSRect(x: 260, y: 190, width: 280, height: 220))
-private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 150, width: 400, height: 300))
+private let touchID = SystemSettings.Prompt.panel(NSRect(x: 260, y: 160, width: 280, height: 273), window: 1)
+private let alert = SystemSettings.Prompt.panel(NSRect(x: 260, y: 190, width: 280, height: 220), window: 2)
+private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 150, width: 400, height: 300), window: 3)
 
 @Suite struct PromptTrackerTests {
     @Test func firstPanelIsAuthenticationThenTheAlert() {
@@ -49,6 +49,28 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
         }
         #expect(t.phase == .granted, "it doesn't fall back to the drag instructions on its own")
         #expect(!t.isShowingRelaunchPrompt)
+    }
+
+    /// A panel System Settings showed on its own while the guide waited (measured on macOS
+    /// 27): it zoomed from 239×202 to 260×220 and back, and dropped out of the window list
+    /// for a tick. Taking its later frames for the "Quit & Reopen" alert left the guide
+    /// thinking the grant had gone through.
+    @Test func aZoomingPanelStaysOnePrompt() {
+        var t = PromptTracker()
+        var closed = false
+        let heights: [CGFloat] = [202, 206, 211, 219, 223, 220, 220]
+        for h in heights {
+            closed = t.update(.panel(NSRect(x: 422, y: 366, width: 260, height: h), window: 40572)) || closed
+            #expect(!t.isShowingRelaunchPrompt)
+        }
+        closed = t.update(nil) || closed
+        for h in heights.reversed() {
+            closed = t.update(.panel(NSRect(x: 422, y: 366, width: 260, height: h), window: 40572)) || closed
+            #expect(t.phase == .prompt(.authentication(NSRect(x: 422, y: 366, width: 260, height: h))))
+        }
+        for _ in 0...PromptTracker.authenticationGapTicks { closed = t.update(nil) || closed }
+        #expect(!closed)
+        #expect(t.phase == .instructions)
     }
 
     @Test func resumeReturnsToInstructions() {

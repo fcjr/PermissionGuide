@@ -62,17 +62,25 @@ enum SystemSettings {
         windowFrames().first { $0 != window && window.contains($0) }
     }
 
+    /// `window` is the window number. Panels zoom in and out, so their frame changes from
+    /// one tick to the next while the window stays the same.
     enum Prompt: Equatable {
         /// Touch ID or password, shown by a separate system process.
-        case authentication(NSRect)
+        case authentication(NSRect, window: Int)
         /// A small panel of System Settings' own: its Touch ID or password prompt, or the
         /// "Quit & Reopen" alert that can follow a grant. The window list can't tell them
-        /// apart, so `SettingsGuide` decides from the order they appear in.
-        case panel(NSRect)
+        /// apart, so `PromptTracker` decides from the order they appear in.
+        case panel(NSRect, window: Int)
 
         var frame: NSRect {
             switch self {
-            case .authentication(let frame), .panel(let frame): frame
+            case .authentication(let frame, _), .panel(let frame, _): frame
+            }
+        }
+
+        var window: Int {
+            switch self {
+            case .authentication(_, let window), .panel(_, let window): window
             }
         }
     }
@@ -88,13 +96,14 @@ enum SystemSettings {
                   bounds.width > 150, bounds.height > 80
             else { continue }
             let frame = cocoaRect(fromTopLeft: bounds)
+            let number = entry[kCGWindowNumber as String] as? Int ?? 0
             let owner = (entry[kCGWindowOwnerName as String] as? String ?? "").lowercased()
             if authenticationProcesses.contains(where: owner.contains) {
-                return .authentication(frame)
+                return .authentication(frame, window: number)
             }
             if (entry[kCGWindowOwnerPID as String] as? pid_t) == app?.processIdentifier,
                frame != window, frame.width < 520, frame.height < 400, window.intersects(frame) {
-                return .panel(frame)
+                return .panel(frame, window: number)
             }
         }
         return nil
