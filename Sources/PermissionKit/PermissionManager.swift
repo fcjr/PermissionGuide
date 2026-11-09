@@ -1,6 +1,5 @@
 import AppKit
 import Observation
-import PermissionKitProbe
 
 /// Tracks permission status and runs the guided grant flow.
 ///
@@ -22,6 +21,10 @@ public final class PermissionManager {
     /// The permission whose guide is showing, if any.
     public private(set) var pending: Permission?
 
+    /// Permissions that are granted in System Settings but that this process can't use
+    /// until it relaunches. Their status reads `.granted`. See `needsRelaunch(_:)`.
+    public private(set) var relaunchPending: Set<Permission> = []
+
     /// What the guide tells the user when System Settings offers to quit and reopen the
     /// app after a grant.
     @ObservationIgnored public var relaunchChoice = RelaunchChoice.quitAndReopen
@@ -33,8 +36,11 @@ public final class PermissionManager {
     @ObservationIgnored private var lastExtensionQuery = Date.distantPast
     /// Grants a fresh process has seen that this one can't until it relaunches.
     @ObservationIgnored private var probedGrants: Set<Permission> = []
-    @ObservationIgnored private var isProbing = false
+    @ObservationIgnored private var probeTask: Task<Void, Never>?
     @ObservationIgnored private var lastProbe = Date.distantPast
+    /// When the pending permission's grant was first seen by a probe only.
+    @ObservationIgnored private var probedGrantSince: Date?
+    @ObservationIgnored private var isTerminating = false
 
     /// - Parameters:
     ///   - permissions: Permissions to keep `statuses` current for.
@@ -43,6 +49,13 @@ public final class PermissionManager {
         self.permissions = permissions
         guide.onCancel = { [weak self] in self?.finish(.cancelled) }
         guide.onDone = { [weak self] in self?.finish(.confirmed) }
+        guide.onRelaunchDeferred = { [weak self] in self?.relaunchDeferred() }
+        // "Quit & Reopen" quits the app mid-guide. Close the guide on the way out.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.appWillTerminate() }
+        }
         refresh()
         Task { [weak self] in
             while !Task.isCancelled {
@@ -58,6 +71,13 @@ public final class PermissionManager {
         return statuses[permission] ?? permission.currentStatus ?? .unknown
     }
 
+    /// Whether `permission` is granted but this process can't use it until the app
+    /// relaunches, such as after the user clicked Later on System Settings' "Quit &
+    /// Reopen" alert. Offer to restart the app.
+    public func needsRelaunch(_ permission: Permission) -> Bool {
+        relaunchPending.contains(permission)
+    }
+
     /// Re-checks every tracked permission now.
     public func refresh() {
         for permission in permissions {
@@ -65,13 +85,11 @@ public final class PermissionManager {
                 set(probedGrants.contains(permission) ? .granted : status, for: permission)
             }
         }
+        let waiting = probedGrants.filter { $0.currentStatus != .granted }
+        if waiting != relaunchPending { relaunchPending = waiting }
         refreshSystemExtensions()
-        probeScreenRecording()
-
-        if let pending {
-            let granted = pendingCheck?() ?? (status(of: pending) == .granted)
-            if granted { finish(.granted) }
-        }
+        probe()
+        checkPending()
     }
 
     /// Grants a permission with the user's help.
@@ -134,7 +152,13 @@ public final class PermissionManager {
         isGranted: (@MainActor () -> Bool)? = nil
     ) async -> PermissionResult {
         if let isGranted, isGranted() { return .granted }
-        if isGranted == nil, appURL == Bundle.main.bundleURL, status(of: permission) == .granted { return .granted }
+        let isOwnApp = isGranted == nil && appURL == Bundle.main.bundleURL
+        if isOwnApp, status(of: permission) == .granted { return .granted }
+        // Granted earlier, but this process can't see it until it relaunches.
+        if isOwnApp, permission.mayNeedRelaunch {
+            await probe(force: true, including: permission)?.value
+            if status(of: permission) == .granted { return .granted }
+        }
 
         begin(permission, isGranted: isGranted)
         showGuide(for: permission, appURL: appURL, tint: tint, isGranted: isGranted)
@@ -176,34 +200,82 @@ public final class PermissionManager {
         if statuses[permission] != status { statuses[permission] = status }
     }
 
-    /// Screen Recording reads as denied in a running app until it relaunches. While it
-    /// matters (it's tracked or being granted), ask a fresh copy of the app instead.
-    private func probeScreenRecording() {
-        let permission = Permission.screenRecording
-        guard permissions.contains(permission) || pending == permission,
-              !probedGrants.contains(permission), permission.currentStatus == .notGranted,
-              !isProbing, Date().timeIntervalSince(lastProbe) > 1.5,
-              let executable = Bundle.main.executableURL
-        else { return }
-        isProbing = true
-        lastProbe = Date()
+    private func isPendingGranted(_ permission: Permission) -> Bool {
+        pendingCheck?() ?? (status(of: permission) == .granted)
+    }
+
+    /// Finishes the request once its permission is granted, unless System Settings'
+    /// "Quit & Reopen" alert is up (or likely about to be): the guide stays to walk the
+    /// user through it, and finishes when it closes (`relaunchDeferred`).
+    private func checkPending() {
+        guard let pending, isPendingGranted(pending) else {
+            probedGrantSince = nil
+            return
+        }
+        if guide.isShowingRelaunchPrompt { return }
+        // A probe can see the grant a moment before System Settings shows the alert.
+        if pendingCheck == nil, needsRelaunch(pending) {
+            let since = probedGrantSince ?? Date()
+            probedGrantSince = since
+            if Date().timeIntervalSince(since) < 1 { return }
+        }
+        finish(.granted)
+    }
+
+    /// The user clicked Later on the "Quit & Reopen" alert, so the grant went through but
+    /// the app keeps running. Finish as granted once a probe confirms it.
+    private func relaunchDeferred() {
+        guard let permission = pending else { return }
         Task {
-            let granted = await Task.detached {
-                let process = Process()
-                process.executableURL = executable
-                process.environment = ProcessInfo.processInfo.environment.merging([PK_PROBE_ENV: "screenRecording"]) { $1 }
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                guard (try? process.run()) != nil, pk_probe_linked() else { return false }
-                process.waitUntilExit()
-                return process.terminationReason == .exit && process.terminationStatus == 0
-            }.value
-            isProbing = false
-            if granted {
-                probedGrants.insert(permission)
+            // Quit & Reopen also closes the alert, then quits the app. Give it a moment.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard pending == permission, !isTerminating else { return }
+            await probe(force: true)?.value
+            guard pending == permission, !isTerminating else { return }
+            if isPendingGranted(permission) {
+                finish(.granted)
+            } else if pendingCheck != nil || status(of: permission) != .unknown {
+                // It didn't go through after all (the user switched it back off), so
+                // point at the list again. Permissions that can't be checked keep their
+                // Done button instead.
+                guide.resumeInstructions()
+            }
+        }
+    }
+
+    private func appWillTerminate() {
+        isTerminating = true
+        guard let pending else { return }
+        finish(status(of: pending) == .granted ? .granted : .cancelled, activate: false)
+    }
+
+    /// Some grants (see `Permission.mayNeedRelaunch`) read as denied in a running app
+    /// until it relaunches. While one matters (it's tracked or being granted), ask a
+    /// fresh copy of the app instead: every 1.5 seconds during a request, and every 5
+    /// otherwise. Returns the probe in flight, if any.
+    @discardableResult
+    private func probe(force: Bool = false, including extra: Permission? = nil) -> Task<Void, Never>? {
+        if let probeTask { return probeTask }
+        let wanted = (permissions + [pending, extra].compactMap { $0 }).filter {
+            $0.mayNeedRelaunch && !probedGrants.contains($0) && $0.currentStatus == .notGranted
+        }
+        let interval: TimeInterval = pending == nil ? 5 : 1.5
+        guard !wanted.isEmpty, Probe.isAvailable,
+              force || Date().timeIntervalSince(lastProbe) > interval,
+              let executable = Bundle.main.executableURL
+        else { return nil }
+        lastProbe = Date()
+        let task = Task {
+            let granted = await Probe.run(wanted, executable: executable)
+            probeTask = nil
+            lastProbe = Date()
+            if let granted, !granted.isEmpty {
+                probedGrants.formUnion(granted)
                 refresh()
             }
         }
+        probeTask = task
+        return task
     }
 
     private func refreshSystemExtensions() {
@@ -232,9 +304,10 @@ public final class PermissionManager {
         guide.stop()
         pending = nil
         pendingCheck = nil
+        probedGrantSince = nil
         continuation?.resume(returning: result)
         continuation = nil
-        if activate { bringAppForward() }
+        if activate, !isTerminating { bringAppForward() }
     }
 
     private func bringAppForward() {

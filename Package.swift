@@ -11,7 +11,11 @@ let package = Package(
     ],
     targets: [
         .target(name: "PermissionKit", dependencies: ["PermissionKitProbe"]),
-        .target(name: "PermissionKitProbe", linkerSettings: [.linkedFramework("CoreGraphics")]),
+        .target(
+            name: "PermissionKitProbe",
+            linkerSettings: [.linkedFramework("CoreGraphics"), .linkedFramework("IOKit")]
+        ),
+        .testTarget(name: "PermissionKitTests", dependencies: ["PermissionKit"]),
         .target(
             name: "PermissionInstaller",
             dependencies: ["PermissionKit"],

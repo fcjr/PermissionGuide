@@ -57,12 +57,24 @@ public enum Permission: Hashable, Sendable {
         return URL(string: "x-apple.systempreferences:\(path)")!
     }
 
+    /// Whether a grant can take effect only after the app relaunches. System Settings
+    /// offers to quit and reopen the app after granting these, and until then the running
+    /// app may still read them as not granted. `PermissionManager` checks them from a
+    /// fresh copy of the app instead, and reports the wait through `needsRelaunch(_:)`.
+    public var mayNeedRelaunch: Bool {
+        switch self {
+        case .fullDiskAccess, .screenRecording, .inputMonitoring: true
+        default: false
+        }
+    }
+
     /// The current process's status, checked without ever showing a system prompt.
     /// `nil` for system extensions, whose status is asynchronous (see `PermissionManager`).
     package var currentStatus: PermissionStatus? {
         switch self {
         case .fullDiskAccess:
             // TCC.db exists on every Mac and can only be opened with Full Disk Access.
+            // May keep failing until the app relaunches.
             let path = NSHomeDirectory() + "/Library/Application Support/com.apple.TCC/TCC.db"
             guard let handle = FileHandle(forReadingAtPath: path) else { return .notGranted }
             try? handle.close()
@@ -139,7 +151,8 @@ public struct SystemExtension: Hashable, Sendable {
 
 /// How a `request` or `guide(to:)` call ended.
 public enum PermissionResult: Sendable {
-    /// macOS (or your `isGranted` check) reports the permission granted.
+    /// macOS (or your `isGranted` check) reports the permission granted. For a permission
+    /// that only applies after a relaunch, check `PermissionManager.needsRelaunch(_:)`.
     case granted
     /// The user clicked Done for a permission that can't be checked.
     case confirmed
@@ -164,6 +177,7 @@ public enum RelaunchChoice: Sendable {
     /// take effect right away.
     case quitAndReopen
     /// The app keeps running. Choose this when relaunching would interrupt something,
-    /// such as an installer.
+    /// such as an installer. The request still returns `.granted`, and
+    /// `needsRelaunch(_:)` reports that the app hasn't picked the grant up yet.
     case later
 }

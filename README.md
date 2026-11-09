@@ -11,10 +11,10 @@ Requires macOS 14.
 
 | Permission | Pane | Status check |
 | --- | --- | --- |
-| `.fullDiskAccess` | Full Disk Access | ✓ |
+| `.fullDiskAccess` | Full Disk Access | ✓ (may need a relaunch) |
 | `.screenRecording` | Screen & System Audio Recording | ✓ (may need a relaunch) |
 | `.accessibility` | Accessibility | ✓ |
-| `.inputMonitoring` | Input Monitoring | ✓ |
+| `.inputMonitoring` | Input Monitoring | ✓ (may need a relaunch) |
 | `.bluetooth` | Bluetooth | ✓ |
 | `.developerTools` | Developer Tools | No API; user clicks Done |
 | `.appManagement` | App Management | No API; user clicks Done |
@@ -49,6 +49,14 @@ targets: [
   Disk Access check looks inside the app's container and always fails, and system
   extensions can't be installed.
 - **`NSBluetoothAlwaysUsageDescription`** in Info.plist if you use `.bluetooth`.
+- **Your executable can be launched as a probe.** To see grants that only apply after a
+  relaunch, PermissionKit runs `Bundle.main.executableURL` with `PERMISSIONKIT_PROBE`
+  set. A C constructor in `PermissionKitProbe` answers through the exit status and exits
+  before `main`, so none of your startup code runs. This works on its own when the app
+  links PermissionKit, statically or not. Your own `__attribute__((constructor))` or
+  `+load` code can still run first, so keep it free of side effects. If the probe's
+  constructor didn't run in your process (it wasn't linked in), PermissionKit doesn't
+  probe, so it never launches a second copy of your app.
 
 ## Usage
 
@@ -119,13 +127,42 @@ await permissions.request(
 )
 ```
 
-Screen Recording often keeps reporting `.notGranted` until the app relaunches, so tell
-users they may need to quit and reopen after granting it.
-
 When macOS asks for Touch ID or a password, or System Settings offers to quit and reopen
 your app, the guide highlights that prompt and tells the user what to do. Set
 `permissions.relaunchChoice = .later` if relaunching would interrupt something; the
 default, `.quitAndReopen`, suggests restarting.
+
+### Permissions that need a relaunch
+
+Full Disk Access, Screen Recording and Input Monitoring
+(`permission.mayNeedRelaunch`) can keep reading as `.notGranted` in the running app
+after the user grants them. System Settings then offers **Quit & Reopen** or **Later**.
+PermissionKit checks these from a fresh copy of your app (see
+[App requirements](#app-requirements)), so:
+
+- **Quit & Reopen:** macOS quits your app. The guide closes on the way out, and code
+  after the pending `request` may not get to run before the process ends, so save any
+  progress before you call it. After the relaunch the permission is simply `.granted`.
+- **Later:** the guide finishes and `request` returns `.granted`. `status(of:)` reads
+  `.granted` too, but your process can't use the permission yet, so
+  `needsRelaunch(_:)` is `true` until the app restarts. Offer a restart:
+
+```swift
+if case .granted = await permissions.request(.fullDiskAccess),
+   permissions.needsRelaunch(.fullDiskAccess) {
+    showRestartButton()   // relaunch however your app does it
+}
+```
+
+`relaunchPending` is the observable set of permissions waiting for a relaunch. The same
+check also catches grants made in System Settings outside the guide: tracked permissions
+are probed every 5 seconds, and `request` probes before it opens anything, so it returns
+`.granted` right away for a grant the app can't see yet.
+
+A new `PermissionResult` case was considered and left out: the permission *is* granted,
+the existing `.granted` paths in callers stay correct, and restarting is an app-level
+choice that `needsRelaunch(_:)` answers whenever the app asks, not only at the end of a
+request.
 
 ### A SwiftUI permission screen
 
@@ -252,11 +289,13 @@ check.
 | `PermissionManager(permissions:pollInterval:)` | Tracks status for the listed permissions |
 | `status(of:)`, `statuses` | Current status: `.granted`, `.notGranted` or `.unknown` |
 | `pending` | The permission whose guide is showing |
+| `needsRelaunch(_:)`, `relaunchPending` | Granted, but the app must relaunch to use it |
 | `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions first |
 | `guide(to:dragging:tint:isGranted:)` | Guides the user without requesting anything |
 | `cancel()` | Closes the guide; the pending call returns `.cancelled` |
 | `refresh()` | Re-checks status now |
 | `Permission.localizedName`, `.settingsURL` | Pane name and deep link |
+| `Permission.mayNeedRelaunch` | Whether a grant can wait for a relaunch |
 | `SystemExtension.setupIssues(in:)` | What's stopping activation |
 | `SystemExtension.embeddedURL(in:)` | The embedded `.systemextension` bundle |
 
@@ -268,6 +307,14 @@ check.
 - **Highlight:** With Accessibility permission, PermissionKit reads the list's exact frame.
   Without it, the highlight is placed from System Settings' layout (measured on macOS 27)
   and covers the first two rows. Extension switches are found from the sheet's frame.
+  Once the grant has gone through (the user clicked Later on "Quit & Reopen"), and
+  briefly after authenticating, nothing is highlighted: those rows aren't your app's.
+- **Prompts:** Touch ID, password and "Quit & Reopen" windows are found in the window
+  list and told apart by the order they appear in and their size. While "Quit & Reopen"
+  is up, the guide waits for the user's answer even if the grant is already visible.
+- **Probe:** For permissions that may need a relaunch, a fresh copy of the app reports
+  what it has through its exit status (`PermissionKitProbe`), at most every 1.5 seconds
+  during a request and every 5 seconds otherwise, only while one is missing.
 - **Drag:** The icon's pasteboard item is the app's file URL. Dropping it into a privacy
   list adds the app, the same as picking it with "+".
 - **Sheets:** System Settings ignores deep links while a sheet is open, and it can't be

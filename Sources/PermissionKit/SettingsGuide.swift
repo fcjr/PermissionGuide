@@ -15,10 +15,19 @@ final class SettingsGuide {
             case .drag(let p, _), .toggle(let p, _): p
             }
         }
+
+        var confirmManually: Bool {
+            switch self {
+            case .drag(_, let c), .toggle(_, let c): c
+            }
+        }
     }
 
     var onCancel: (() -> Void)?
     var onDone: (() -> Void)?
+    /// The "Quit & Reopen" alert closed and the app is still running: the user clicked
+    /// Later. Call `resumeInstructions()` if the grant turns out not to have gone through.
+    var onRelaunchDeferred: (() -> Void)?
 
     private var mode: Mode?
     private var overlay: SpotlightOverlay?
@@ -31,19 +40,17 @@ final class SettingsGuide {
     private var relaunch = RelaunchChoice.quitAndReopen
     private var appName = ""
     private var instructions = (title: "", message: "")
-    private var shownPrompt: Prompt?
-    /// Whether macOS has asked the user to authenticate during this guide.
-    private var sawAuthentication = false
+    private var prompts = PromptTracker()
+    /// The phase the sidecar's text was last set for.
+    private var shownPhase = PromptTracker.Phase.instructions
 
-    private enum Prompt: Equatable {
-        case authentication(NSRect)
-        case relaunch(NSRect)
+    /// Whether System Settings' "Quit & Reopen" alert is up. Finishing now would close the
+    /// guide while the alert still waits for an answer.
+    var isShowingRelaunchPrompt: Bool { prompts.isShowingRelaunchPrompt }
 
-        var frame: NSRect {
-            switch self {
-            case .authentication(let frame), .relaunch(let frame): frame
-            }
-        }
+    /// Shows the instructions again after `onRelaunchDeferred`.
+    func resumeInstructions() {
+        prompts.resume()
     }
 
     func start(_ mode: Mode, appURL: URL, tint: NSColor, relaunch: RelaunchChoice) {
@@ -105,14 +112,19 @@ final class SettingsGuide {
         mode = nil
         lastLayout = []
         isDragging = false
-        shownPrompt = nil
-        sawAuthentication = false
+        prompts = PromptTracker()
+        shownPhase = .instructions
     }
 
     private func tick() {
         guard let mode, let overlay, let sidecar else { return }
         let frame = SystemSettings.windowFrame()
-        let prompt = frame.flatMap { SystemSettings.prompt(over: $0) }.map(classify)
+        if prompts.update(frame.flatMap { SystemSettings.prompt(over: $0) }) {
+            // Not from inside the tick: the handler may stop the guide.
+            DispatchQueue.main.async { [weak self] in self?.onRelaunchDeferred?() }
+        }
+        let phase = prompts.phase
+        let prompt: PromptTracker.Prompt? = if case .prompt(let p) = phase { p } else { nil }
         // Only while System Settings is in front, or a password dialog that took focus from
         // it. Any other app coming forward (like the one being granted) hides the guide.
         guard SystemSettings.isFrontmost || isDragging || SystemSettings.isAuthenticationFrontmost,
@@ -129,12 +141,19 @@ final class SettingsGuide {
         // A prompt is the next thing to do, so it gets the highlight. Otherwise a sheet
         // over the pane (such as the "+" file picker) hides the list, so drop the
         // highlight until it closes. For extensions the sheet is the target instead.
+        // Right after authenticating, and once granted, there's nothing to point at: the
+        // list's first rows (the highlight without Accessibility) aren't the app's.
         let sheet = SystemSettings.sheetFrame(in: frame)
-        let showsHighlight = if prompt != nil { true } else if case .toggle = mode { sheet != nil } else { sheet == nil }
+        let showsHighlight = switch phase {
+        case .prompt: true
+        case .afterAuthentication, .granted: false
+        case .instructions: if case .toggle = mode { sheet != nil } else { sheet == nil }
+        }
         let showsGhost = showsHighlight && prompt == nil && !isDragging
-        if prompt != shownPrompt {
-            shownPrompt = prompt
-            let text = text(for: prompt)
+        // Right after authenticating, keep the last text until the next prompt shows.
+        if phase != shownPhase, !phase.isAfterAuthentication {
+            shownPhase = phase
+            let text = text(for: phase, mode: mode)
             sidecar.show(title: text.title, message: text.message)
             lastLayout = []
         }
@@ -169,35 +188,20 @@ final class SettingsGuide {
         }
     }
 
-    /// System Settings shows both its Touch ID/password panel and its "Quit & Reopen" alert
-    /// as same-sized, centered, untitled windows. Quit & Reopen only ever follows a
-    /// successful authentication, so the first panel is authentication. After that, a
-    /// retry is the tall one: Touch ID is 273 pt and the password form taller, while the
-    /// alert is about 220 pt.
-    private func classify(_ prompt: SystemSettings.Prompt) -> Prompt {
-        switch prompt {
-        case .authentication(let frame):
-            sawAuthentication = true
-            return .authentication(frame)
-        case .panel(let frame):
-            if !sawAuthentication || frame.height >= 250 {
-                sawAuthentication = true
-                return .authentication(frame)
-            }
-            return .relaunch(frame)
-        }
-    }
-
-    private func text(for prompt: Prompt?) -> (title: String, message: String) {
-        switch prompt {
-        case .authentication:
+    private func text(for phase: PromptTracker.Phase, mode: Mode) -> (title: String, message: String) {
+        switch phase {
+        case .prompt(.authentication):
             ("Confirm It's You", "Use Touch ID or enter your password to allow \(appName).")
-        case .relaunch:
+        case .prompt(.relaunch):
             switch relaunch {
             case .quitAndReopen: ("Restart \(appName)", "Click Quit & Reopen so \(appName) can use its new permission.")
             case .later: ("Almost Done", "Click Later. \(appName) picks up the change on its own.")
             }
-        case nil:
+        case .granted:
+            mode.confirmManually
+                ? ("Almost Done", "Click Done to return to \(appName).")
+                : ("Almost Done", "Returning to \(appName)…")
+        case .instructions, .afterAuthentication:
             instructions
         }
     }
