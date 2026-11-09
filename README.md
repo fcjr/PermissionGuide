@@ -19,6 +19,7 @@ Requires macOS 14.
 | `.developerTools` | Developer Tools | No API; user clicks Done |
 | `.appManagement` | App Management | No API; user clicks Done |
 | `.systemExtension(...)` | Login Items & Extensions | ✓ via `OSSystemExtensionRequest` |
+| `.backgroundItem(daemonPlist:)` | Login Items & Extensions → Allow in the Background | ✓ via `SMAppService` |
 
 System extensions cover VPN providers, content filters and DNS proxies
 (`.networkExtension`), Endpoint Security clients (`.endpointSecurity`), DriverKit
@@ -282,6 +283,23 @@ Endpoint Security clients usually also need `.fullDiskAccess`, granted to the ex
 pass the extension's URL (`vpn.embeddedURL()`) as `dragging:` along with an `isGranted:`
 check.
 
+### Background items
+
+A launch daemon registered with `SMAppService` (a privileged helper, say) only runs once
+the user switches it on under Login Items & Extensions → Allow in the Background. Pass the
+plist's name in `Contents/Library/LaunchDaemons`:
+
+```swift
+let helper = Permission.backgroundItem(daemonPlist: "com.example.app.helper.plist")
+if await permissions.request(helper).isGranted {
+    // SMAppService.daemon(plistName:).status == .enabled
+}
+```
+
+`request` registers the daemon if it isn't yet, then shows the guide until macOS reports
+it enabled. The guide doesn't highlight the switch: the list's position depends on how
+many items sit above it. The app has to be signed (Developer ID) for macOS to register it.
+
 ### API at a glance
 
 | API | Purpose |
@@ -290,7 +308,7 @@ check.
 | `status(of:)`, `statuses` | Current status: `.granted`, `.notGranted` or `.unknown` |
 | `pending` | The permission whose guide is showing |
 | `needsRelaunch(_:)`, `relaunchPending` | Granted, but the app must relaunch to use it |
-| `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions first |
+| `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
 | `guide(to:dragging:tint:isGranted:)` | Guides the user without requesting anything |
 | `cancel()` | Closes the guide; the pending call returns `.cancelled` |
 | `refresh()` | Re-checks status now |

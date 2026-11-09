@@ -68,6 +68,11 @@ final class SettingsGuide {
                 title: "Grant \(name)",
                 message: "Drag this icon into the highlighted list in System Settings.",
                 icon: icon, dragURL: appURL, showsDone: confirmManually, tint: tint)
+        case .toggle(.backgroundItem, let confirmManually):
+            sidecar = SidecarPanel(
+                title: "Allow in the Background",
+                message: "Turn on the switch next to \(appName) under Allow in the Background.",
+                icon: icon, dragURL: nil, showsDone: confirmManually, tint: tint)
         case .toggle(let permission, let confirmManually):
             let kind = if case .systemExtension(let ext) = permission { ext.category.localizedName } else { name }
             sidecar = SidecarPanel(

@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import ServiceManagement
 
 /// Tracks permission status and runs the guided grant flow.
 ///
@@ -96,7 +97,8 @@ public final class PermissionManager {
     ///
     /// For a privacy pane, this is the same as `guide(to:)`. For a system extension, it
     /// submits the activation request first, and shows the guide only if macOS needs
-    /// the user's approval.
+    /// the user's approval. For a background item, it registers the daemon with
+    /// `SMAppService` first, and shows the guide while macOS waits for the user's approval.
     ///
     /// - Returns: How the request ended. See `PermissionResult`.
     @discardableResult
@@ -106,6 +108,16 @@ public final class PermissionManager {
         tint: NSColor = .controlAccentColor,
         isGranted: (@MainActor () -> Bool)? = nil
     ) async -> PermissionResult {
+        if case .backgroundItem(let plist) = permission {
+            let service = SMAppService.daemon(plistName: plist)
+            if service.status == .notRegistered || service.status == .notFound {
+                // Throws "Operation not permitted" when it registered but needs approval.
+                do { try service.register() } catch {
+                    if service.status != .requiresApproval { return .failed(error) }
+                }
+            }
+            return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
+        }
         guard case .systemExtension(let ext) = permission else {
             return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
         }
@@ -179,10 +191,9 @@ public final class PermissionManager {
     private func showGuide(for permission: Permission, appURL: URL, tint: NSColor, isGranted: (@MainActor () -> Bool)?) {
         let isOwnApp = appURL == Bundle.main.bundleURL
         let canVerify = isGranted != nil || (isOwnApp && status(of: permission) != .unknown)
-        let mode: SettingsGuide.Mode = if case .systemExtension = permission {
-            .toggle(permission, confirmManually: !canVerify)
-        } else {
-            .drag(permission, confirmManually: !canVerify)
+        let mode: SettingsGuide.Mode = switch permission {
+        case .systemExtension, .backgroundItem: .toggle(permission, confirmManually: !canVerify)
+        default: .drag(permission, confirmManually: !canVerify)
         }
         SystemSettings.open(permission.settingsURL)
         guide.start(mode, appURL: appURL, tint: tint, relaunch: relaunchChoice)

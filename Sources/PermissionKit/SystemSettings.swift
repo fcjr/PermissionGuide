@@ -138,6 +138,9 @@ enum SystemSettings {
         if case .systemExtension = permission {
             return extensionListRect(in: window)
         }
+        if case .backgroundItem = permission {
+            return backgroundListRect(in: window)
+        }
         let visible = NSRect(x: window.minX, y: window.minY + 10, width: window.width, height: window.height - 62)
         if AXIsProcessTrusted(), let list = accessibilityListRect(in: window) {
             let clipped = list.intersection(visible)
@@ -160,8 +163,18 @@ enum SystemSettings {
         case .screenRecording: 119
         case .inputMonitoring, .developerTools: 117
         case .appManagement, .bluetooth: 101
-        case .systemExtension: 0
+        case .systemExtension, .backgroundItem: 0
         }
+    }
+
+    /// Login Items & Extensions lists Open at Login first and Allow in the Background below
+    /// it, and their heights depend on how many apps each holds. Without a fixed place to
+    /// point at, highlight the pane's content.
+    private static func backgroundListRect(in window: NSRect) -> NSRect {
+        NSRect(x: window.minX + sidebarWidth + contentInset,
+               y: window.minY + contentInset,
+               width: window.width - sidebarWidth - contentInset * 2,
+               height: window.height - 52 - contentInset * 2)
     }
 
     /// System extensions are switched on in a sheet (470×465, centered in the window when

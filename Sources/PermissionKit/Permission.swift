@@ -3,6 +3,7 @@ import ApplicationServices
 import CoreBluetooth
 import CoreGraphics
 import IOKit.hid
+import ServiceManagement
 
 /// A permission the user grants by adding the app to, or switching it on in, System Settings.
 ///
@@ -11,6 +12,9 @@ import IOKit.hid
 /// drivers, camera extensions) that the user must switch on before they run.
 /// Prompt-only permissions like Camera and Microphone are out of scope: apps appear in
 /// those lists only after asking through the framework's own API.
+///
+/// `backgroundItem` covers a launchd daemon the app registers with `SMAppService`, which
+/// the user switches on under Login Items & Extensions → Allow in the Background.
 public enum Permission: Hashable, Sendable {
     case fullDiskAccess
     case screenRecording
@@ -20,6 +24,8 @@ public enum Permission: Hashable, Sendable {
     case appManagement
     case bluetooth
     case systemExtension(SystemExtension)
+    /// A launch daemon in the app's `Contents/Library/LaunchDaemons`, by plist name.
+    case backgroundItem(daemonPlist: String)
 
     /// Every privacy pane permission, in System Settings order.
     public static let privacyPermissions: [Permission] = [
@@ -38,6 +44,7 @@ public enum Permission: Hashable, Sendable {
         case .appManagement: "App Management"
         case .bluetooth: "Bluetooth"
         case .systemExtension(let ext): ext.displayName
+        case .backgroundItem: "Allow in the Background"
         }
     }
 
@@ -53,6 +60,7 @@ public enum Permission: Hashable, Sendable {
         case .bluetooth: "com.apple.preference.security?Privacy_Bluetooth"
         case .systemExtension(let ext):
             "com.apple.ExtensionsPreferences?extensionPointIdentifier=\(ext.category.extensionPointIdentifier)"
+        case .backgroundItem: "com.apple.LoginItems-Settings.extension"
         }
         return URL(string: "x-apple.systempreferences:\(path)")!
     }
@@ -93,6 +101,12 @@ public enum Permission: Hashable, Sendable {
             return .unknown
         case .systemExtension:
             return nil
+        case .backgroundItem(let plist):
+            return switch SMAppService.daemon(plistName: plist).status {
+            case .enabled: .granted
+            case .notFound: .unknown
+            default: .notGranted
+            }
         }
     }
 }

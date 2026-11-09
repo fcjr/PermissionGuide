@@ -10,7 +10,11 @@ let package = Package(
         .library(name: "PermissionInstallerPlugin", targets: ["PermissionInstallerPlugin"]),
     ],
     targets: [
-        .target(name: "PermissionKit", dependencies: ["PermissionKitProbe"]),
+        .target(
+            name: "PermissionKit",
+            dependencies: ["PermissionKitProbe"],
+            linkerSettings: [.linkedFramework("ServiceManagement")]
+        ),
         .target(
             name: "PermissionKitProbe",
             linkerSettings: [.linkedFramework("CoreGraphics"), .linkedFramework("IOKit")]

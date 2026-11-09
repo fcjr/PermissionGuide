@@ -107,6 +107,7 @@ extension InstallerStep {
     package func resolvedHeading(appName: String) -> String {
         if let heading { return heading }
         return switch kind {
+        case .permission(.backgroundItem): "Allow \(appName) in the background"
         case .permission(let p): "Allow \(p.localizedName)"
         case .systemExtension(let ext): "Allow the \(ext.category.localizedName.lowercased())"
         case .networkConfiguration(let c): "Add the \(c.kind.lowercasedName) configuration"
@@ -118,6 +119,8 @@ extension InstallerStep {
     package func resolvedMessage(appName: String) -> String {
         if let message { return message }
         return switch kind {
+        case .permission(.backgroundItem):
+            "\(appName) runs a helper in the background. Click below, then turn on \(appName) under Allow in the Background in System Settings."
         case .permission(let p):
             "\(appName) needs \(p.localizedName). Click below, then drag \(appName) into the highlighted list in System Settings."
         case .systemExtension(let ext):
@@ -165,6 +168,7 @@ extension Permission {
         case .appManagement: "app.badge.checkmark"
         case .bluetooth: "dot.radiowaves.left.and.right"
         case .systemExtension(let ext): ext.category.symbolName
+        case .backgroundItem: "gearshape.2"
         }
     }
 }
