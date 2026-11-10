@@ -165,6 +165,7 @@ extension Permission {
         case .developerTools: "Run software that doesn't meet security policy."
         case .appManagement: "Update or delete other apps."
         case .bluetooth: "Connect to Bluetooth devices."
+        case .backgroundItem: "Keep a helper running in the background."
         case .systemExtension(let ext):
             switch ext.category {
             case .networkExtension: "Route traffic through a VPN tunnel."
@@ -184,6 +185,7 @@ extension Permission {
         case .developerTools: "hammer.fill"
         case .appManagement: "square.stack.3d.up.fill"
         case .bluetooth: "dot.radiowaves.left.and.right"
+        case .backgroundItem: "gearshape.2"
         case .systemExtension(let ext):
             switch ext.category {
             case .networkExtension: "network.badge.shield.half.filled"
@@ -203,6 +205,7 @@ extension Permission {
         case .developerTools: .systemBrown
         case .appManagement: .systemTeal
         case .bluetooth: .systemIndigo
+        case .backgroundItem: .systemGray
         case .systemExtension(let ext):
             ext.category == .networkExtension ? .systemGreen : .systemRed
         }
