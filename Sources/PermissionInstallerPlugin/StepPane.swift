@@ -1,5 +1,5 @@
 import AppKit
-import InstallerPluginBridge
+internal import InstallerPluginBridge
 import PermissionInstaller
 
 /// One setup step. Checks it on entry and skips ahead if it's already done. A required
@@ -9,11 +9,11 @@ import PermissionInstaller
 /// checks the step, and performs it (showing the System Settings guide or a system
 /// prompt) as the app itself.
 @MainActor
-final class StepPane: NSObject, PKPaneController {
+final class StepPane: NSObject, PermissionInstallerPaneController {
     let step: InstallerStep
     private unowned let session: SetupSession
     private var setup: InstallerSetup { session.setup }
-    private weak var host: (any PKPaneHost)?
+    private weak var host: (any PermissionInstallerPaneHost)?
 
     private(set) var isDone = false
     private var isActive = false
@@ -72,7 +72,7 @@ final class StepPane: NSObject, PKPaneController {
         return pane.view
     }()
 
-    func attach(_ host: any PKPaneHost) {
+    func attach(_ host: any PermissionInstallerPaneHost) {
         self.host = host
     }
 
@@ -181,7 +181,7 @@ final class StepPane: NSObject, PKPaneController {
 
     private var notDoneHint: String {
         switch step.kind {
-        case .permission(let p): "\(p.localizedName) isn't on yet. Click \(step.resolvedActionTitle()) to try again."
+        case .permission(let p): "\(p.displayName) isn't on yet. Click \(step.resolvedActionTitle()) to try again."
         default: "That wasn't allowed. Click \(step.resolvedActionTitle()) to try again."
         }
     }

@@ -28,7 +28,7 @@ System extensions cover VPN providers, content filters and DNS proxies
 drivers and camera extensions.
 
 Prompt-only permissions (Camera, Microphone, Automation, Files & Folders, …) aren't
-included: an app shows up in those lists only after it asks through the framework's
+included. An app shows up in those lists only after it asks through the framework's
 own API.
 
 ## Installation
@@ -143,10 +143,10 @@ after the user grants them. System Settings then offers **Quit & Reopen** or **L
 PermissionGuide checks these from a fresh copy of your app (see
 [App requirements](#app-requirements)), so:
 
-- **Quit & Reopen:** macOS quits your app. The guide closes on the way out, and code
+- **Quit & Reopen.** macOS quits your app. The guide closes on the way out, and code
   after the pending `request` may not get to run before the process ends, so save any
-  progress before you call it. After the relaunch the permission is simply `.granted`.
-- **Later:** the guide finishes and `request` returns `.granted`. `status(of:)` reads
+  progress before you call it. After the relaunch the permission is `.granted`.
+- **Later.** The guide finishes and `request` returns `.granted`. `status(of:)` reads
   `.granted` too, but your process can't use the permission yet, so
   `needsRelaunch(_:)` is `true` until the app restarts. Offer a restart:
 
@@ -157,15 +157,10 @@ if case .granted = await permissions.request(.fullDiskAccess),
 }
 ```
 
-`relaunchPending` is the observable set of permissions waiting for a relaunch. The same
-check also catches grants made in System Settings outside the guide: tracked permissions
+`needsRelaunch(_:)` is observable, so a view that reads it updates when the answer changes.
+The same check also catches grants made in System Settings outside the guide. Tracked permissions
 are probed every 5 seconds, and `request` probes before it opens anything, so it returns
 `.granted` right away for a grant the app can't see yet.
-
-A new `PermissionResult` case was considered and left out: the permission *is* granted,
-the existing `.granted` paths in callers stay correct, and restarting is an app-level
-choice that `needsRelaunch(_:)` answers whenever the app asks, not only at the end of a
-request.
 
 ### A SwiftUI permission screen
 
@@ -176,7 +171,7 @@ struct PermissionsView: View {
     var body: some View {
         List(permissions.permissions) { permission in
             HStack {
-                Text(permission.localizedName)
+                Text(permission.displayName)
                 Spacer()
                 if permissions.status(of: permission) == .granted {
                     Label("Granted", systemImage: "checkmark.circle.fill")
@@ -283,8 +278,8 @@ func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
 
 A VPN also has to save its configuration (`NETunnelProviderManager.saveToPreferences`),
 which shows a separate "Add VPN Configurations" alert that PermissionGuide doesn't guide.
-Endpoint Security clients usually also need `.fullDiskAccess`, granted to the extension:
-pass the extension's URL (`vpn.embeddedURL()`) as `dragging:` along with an `isGranted:`
+Endpoint Security clients usually also need `.fullDiskAccess`, granted to the extension.
+Pass the extension's URL (`vpn.embeddedURL()`) as `dragging:` along with an `isGranted:`
 check.
 
 ### Background items
@@ -301,7 +296,7 @@ if await permissions.request(helper).isGranted {
 ```
 
 `request` registers the daemon if it isn't yet, then shows the guide until macOS reports
-it enabled. The guide doesn't highlight the switch: the list's position depends on how
+it enabled. The guide doesn't highlight the switch, because the list's position depends on how
 many items sit above it. The app has to be signed (Developer ID) for macOS to register it.
 
 ### API at a glance
@@ -311,39 +306,39 @@ many items sit above it. The app has to be signed (Developer ID) for macOS to re
 | `PermissionManager(permissions:pollInterval:)` | Tracks status for the listed permissions |
 | `status(of:)`, `statuses` | Current status: `.granted`, `.notGranted` or `.unknown` |
 | `pending` | The permission whose guide is showing |
-| `needsRelaunch(_:)`, `relaunchPending` | Granted, but the app must relaunch to use it |
+| `needsRelaunch(_:)` | Granted, but the app must relaunch to use it |
 | `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
 | `guide(to:dragging:tint:isGranted:)` | Guides the user without requesting anything |
 | `cancel()` | Closes the guide; the pending call returns `.cancelled` |
 | `refresh()` | Re-checks status now |
-| `Permission.localizedName`, `.settingsURL` | Pane name and deep link |
+| `Permission.displayName`, `.settingsURL` | Pane name and deep link |
 | `Permission.mayNeedRelaunch` | Whether a grant can wait for a relaunch |
 | `SystemExtension.setupIssues(in:)` | What's stopping activation |
 | `SystemExtension.embeddedURL(in:)` | The embedded `.systemextension` bundle |
 
 ## How it works
 
-- **Window tracking:** `CGWindowListCopyWindowInfo` gives System Settings' window frame
+- **Window tracking.** `CGWindowListCopyWindowInfo` gives System Settings' window frame
   without any permission. A timer in common run loop modes keeps the panels attached
   while the window moves, including during a drag.
-- **Highlight:** With Accessibility permission, PermissionGuide reads the list's exact frame.
+- **Highlight.** With Accessibility permission, PermissionGuide reads the list's exact frame.
   Without it, the highlight is placed from System Settings' layout (measured on macOS 27)
   and covers the first two rows. Extension switches are found from the sheet's frame.
   Once the grant has gone through (the user clicked Later on "Quit & Reopen"), and
-  briefly after authenticating, nothing is highlighted: those rows aren't your app's.
-- **Prompts:** Touch ID, password and "Quit & Reopen" windows are found in the window
+  briefly after authenticating, nothing is highlighted, because those rows aren't your app's.
+- **Prompts.** Touch ID, password and "Quit & Reopen" windows are found in the window
   list and told apart by the order they appear in and their size. While "Quit & Reopen"
   is up, the guide waits for the user's answer even if the grant is already visible.
-- **Probe:** For permissions that may need a relaunch, a fresh copy of the app reports
+- **Probe.** For permissions that may need a relaunch, a fresh copy of the app reports
   what it has through its exit status (`PermissionGuideProbe`), at most every 1.5 seconds
   during a request and every 5 seconds otherwise, only while one is missing.
-- **Drag:** The icon's pasteboard item is the app's file URL. Dropping it into a privacy
+- **Drag.** The icon's pasteboard item is the app's file URL. Dropping it into a privacy
   list adds the app, the same as picking it with "+".
-- **Sheets:** System Settings ignores deep links while a sheet is open, and it can't be
+- **Sheets.** System Settings ignores deep links while a sheet is open, and it can't be
   closed without Accessibility. When one is open, PermissionGuide quits System Settings
   and reopens it on the right pane. While guiding a drag, the highlight hides whenever a
   sheet (such as the "+" file picker) covers the list.
-- **Placement:** The panel docks to the right of the window, or to the left, or over the
+- **Placement.** The panel docks to the right of the window, or to the left, or over the
   sidebar on screens too small for either. It works across displays and re-lays out when
   displays change.
 
@@ -392,7 +387,11 @@ extension InstallerSetup {
 ```
 
 Steps are required unless you pass `.optional`. Each step's `heading`, `message` and
-`actionTitle` have defaults you can override.
+`actionTitle` have defaults. Pass your own to any step:
+
+```swift
+.permission(.fullDiskAccess, message: "MyApp scans your whole disk for duplicates.")
+```
 
 ### 2. Handle the installer in your app
 
@@ -432,7 +431,7 @@ Wrap it in a bundle (`SetupPane.bundle/Contents/MacOS/<executable>`) whose Info.
 
 | Key | Value |
 | --- | --- |
-| `NSPrincipalClass` | `PKInstallerSection` |
+| `NSPrincipalClass` | `PermissionInstallerSection` |
 | `PermissionInstallerProvider` | Your subclass's `@objc` name |
 | `InstallerSectionTitle` | Sidebar title, such as `Set Up` |
 

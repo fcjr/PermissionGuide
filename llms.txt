@@ -85,9 +85,9 @@ You are done when the app builds, the screen shows each tracked permission's sta
 | `guide(to:dragging:tint:isGranted:)` | Runs the guide without requesting anything. For apps that submit their own `OSSystemExtensionRequest`. |
 | `cancel()` | Closes the guide. The pending call returns `.cancelled`. |
 | `refresh()` | Re-checks now. |
-| `needsRelaunch(_:)`, `relaunchPending` | Granted, but this process has to restart to use it. |
+| `needsRelaunch(_:)` | Granted, but this process has to restart to use it. |
 | `relaunchChoice` | `.quitAndReopen` (default) or `.later`. Which button the guide points at on the Quit & Reopen alert. |
-| `Permission.localizedName`, `.settingsURL`, `.mayNeedRelaunch` | Pane name, deep link, and whether a grant can wait for a relaunch. |
+| `Permission.displayName`, `.settingsURL`, `.mayNeedRelaunch` | Pane name, deep link, and whether a grant can wait for a relaunch. |
 | `SystemExtension(identifier:category:displayName:)` | Describes an embedded extension. Categories: `.networkExtension`, `.endpointSecurity`, `.driverExtension`, `.cameraExtension`. |
 | `SystemExtension.setupIssues(in:)` | What stops activation. Empty when ready. |
 

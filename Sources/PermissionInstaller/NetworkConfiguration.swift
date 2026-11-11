@@ -8,10 +8,19 @@ public struct NetworkConfiguration: Sendable {
         case appProxy
         case transparentProxy
 
-        var localizedName: String {
+        var displayName: String {
             switch self {
             case .packetTunnel: "VPN"
             case .appProxy, .transparentProxy: "Proxy"
+            }
+        }
+
+        /// Part of a step's `id`.
+        var stepKey: String {
+            switch self {
+            case .packetTunnel: "packetTunnel"
+            case .appProxy: "appProxy"
+            case .transparentProxy: "transparentProxy"
             }
         }
 
@@ -26,12 +35,13 @@ public struct NetworkConfiguration: Sendable {
 
     public var kind: Kind
     public var providerBundleIdentifier: String
-    /// Shown in System Settings. Required by macOS even for proxies.
-    public var serverAddress: String
+    /// The server shown in System Settings. macOS won't save a configuration without one,
+    /// even for a proxy, so `nil` uses the app's name.
+    public var serverAddress: String?
     /// Name shown in System Settings. Defaults to the app's name.
     public var localizedDescription: String?
 
-    public init(_ kind: Kind, providerBundleIdentifier: String, serverAddress: String = "", localizedDescription: String? = nil) {
+    public init(_ kind: Kind, providerBundleIdentifier: String, serverAddress: String? = nil, localizedDescription: String? = nil) {
         self.kind = kind
         self.providerBundleIdentifier = providerBundleIdentifier
         self.serverAddress = serverAddress
@@ -50,7 +60,7 @@ public struct NetworkConfiguration: Sendable {
         if manager.protocolConfiguration == nil {
             let proto = NETunnelProviderProtocol()
             proto.providerBundleIdentifier = providerBundleIdentifier
-            proto.serverAddress = serverAddress
+            proto.serverAddress = serverAddress ?? appName
             manager.protocolConfiguration = proto
             manager.localizedDescription = localizedDescription ?? appName
         }

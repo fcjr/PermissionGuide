@@ -59,7 +59,7 @@ final class SettingsGuide {
         self.relaunch = relaunch
         appName = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
         let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-        let name = mode.permission.localizedName
+        let name = mode.permission.displayName
 
         let sidecar: SidecarPanel
         switch mode {
@@ -74,7 +74,7 @@ final class SettingsGuide {
                 message: "Turn on the switch next to \(appName) under Allow in the Background.",
                 icon: icon, dragURL: nil, showsDone: confirmManually, tint: tint)
         case .toggle(let permission, let confirmManually):
-            let kind = if case .systemExtension(let ext) = permission { ext.category.localizedName } else { name }
+            let kind = if case .systemExtension(let ext) = permission { ext.category.displayName } else { name }
             sidecar = SidecarPanel(
                 title: "Allow \(kind)",
                 message: "Turn on the switch next to \(name) in System Settings.",

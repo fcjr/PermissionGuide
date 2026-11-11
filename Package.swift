@@ -34,5 +34,9 @@ let package = Package(
             name: "PermissionInstallerPlugin",
             dependencies: ["PermissionInstaller", "InstallerPluginBridge"]
         ),
+        .testTarget(
+            name: "PermissionInstallerTests",
+            dependencies: ["PermissionInstaller", "PermissionInstallerPlugin"]
+        ),
     ]
 )

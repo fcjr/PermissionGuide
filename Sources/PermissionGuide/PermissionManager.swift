@@ -24,7 +24,7 @@ public final class PermissionManager {
 
     /// Permissions that are granted in System Settings but that this process can't use
     /// until it relaunches. Their status reads `.granted`. See `needsRelaunch(_:)`.
-    public private(set) var relaunchPending: Set<Permission> = []
+    private(set) var relaunchPending: Set<Permission> = []
 
     /// What the guide tells the user when System Settings offers to quit and reopen the
     /// app after a grant.

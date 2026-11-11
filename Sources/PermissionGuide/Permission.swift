@@ -33,8 +33,9 @@ public enum Permission: Hashable, Sendable {
         .fullDiskAccess, .inputMonitoring, .screenRecording,
     ]
 
-    /// The name System Settings uses for the pane.
-    public var localizedName: String {
+    /// The name System Settings uses for the pane, in English. For a system extension,
+    /// its `displayName`.
+    public var displayName: String {
         switch self {
         case .fullDiskAccess: "Full Disk Access"
         case .screenRecording: "Screen & System Audio Recording"
@@ -131,8 +132,8 @@ public struct SystemExtension: Hashable, Sendable {
         case driverExtension
         case cameraExtension
 
-        /// The extension type's name in System Settings.
-        public var localizedName: String {
+        /// The extension type's name in System Settings, in English.
+        public var displayName: String {
             switch self {
             case .networkExtension: "Network Extension"
             case .endpointSecurity: "Endpoint Security Extension"

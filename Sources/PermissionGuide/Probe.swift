@@ -5,7 +5,7 @@ import PermissionGuideProbe
 ///
 /// Some grants only reach a process when it starts, so the running app can keep reading
 /// them as denied (see `Permission.mayNeedRelaunch`). The probe relaunches the app's
-/// executable with `PK_PROBE_ENV` set. A C constructor in PermissionGuideProbe answers
+/// executable with `PERMISSIONGUIDE_PROBE_ENV` set. A C constructor in PermissionGuideProbe answers
 /// through the exit status before `main`, so none of the app's own startup code runs.
 enum Probe {
     /// The name PermissionGuideProbe.c checks a permission by, for permissions it can check.
@@ -21,12 +21,12 @@ enum Probe {
     /// Whether launching this executable runs the probe. When the constructor didn't run
     /// here (the probe object wasn't linked in), a launch would start a second copy of the
     /// app instead, so PermissionGuide doesn't probe at all.
-    static var isAvailable: Bool { pk_probe_linked() }
+    static var isAvailable: Bool { permissionguide_probe_linked() }
 
-    /// The permissions one probe asks about: those it can check, at most `PK_PROBE_CAPACITY`.
+    /// The permissions one probe asks about: those it can check, at most `PERMISSIONGUIDE_PROBE_CAPACITY`.
     static func asked(_ permissions: [Permission]) -> [Permission] {
         var seen = Set<Permission>()
-        return Array(permissions.filter { name(for: $0) != nil && seen.insert($0).inserted }.prefix(Int(PK_PROBE_CAPACITY)))
+        return Array(permissions.filter { name(for: $0) != nil && seen.insert($0).inserted }.prefix(Int(PERMISSIONGUIDE_PROBE_CAPACITY)))
     }
 
     static func environmentValue(for asked: [Permission]) -> String {
@@ -35,8 +35,8 @@ enum Probe {
 
     /// The granted permissions in a probe's exit status, or `nil` when it isn't an answer.
     static func grants(fromExitStatus status: Int32, asked: [Permission]) -> Set<Permission>? {
-        let bits = (Int32(1) << PK_PROBE_CAPACITY) - 1
-        guard status & ~bits == PK_PROBE_ANSWERED else { return nil }
+        let bits = (Int32(1) << PERMISSIONGUIDE_PROBE_CAPACITY) - 1
+        guard status & ~bits == PERMISSIONGUIDE_PROBE_ANSWERED else { return nil }
         return Set(asked.enumerated().filter { status & (1 << $0.offset) != 0 }.map(\.element))
     }
 
@@ -48,7 +48,7 @@ enum Probe {
         return await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = executable
-            process.environment = ProcessInfo.processInfo.environment.merging([PK_PROBE_ENV: value]) { $1 }
+            process.environment = ProcessInfo.processInfo.environment.merging([PERMISSIONGUIDE_PROBE_ENV: value]) { $1 }
             process.standardInput = FileHandle.nullDevice
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice

@@ -16,7 +16,7 @@
 	<string>1</string>
 	<!-- The section class from PermissionInstallerPlugin. -->
 	<key>NSPrincipalClass</key>
-	<string>PKInstallerSection</string>
+	<string>PermissionInstallerSection</string>
 	<!-- Your InstallerPlugin subclass (its @objc name). -->
 	<key>PermissionInstallerProvider</key>
 	<string>InstallerDemoPlugin</string>

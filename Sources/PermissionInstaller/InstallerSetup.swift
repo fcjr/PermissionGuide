@@ -15,7 +15,11 @@ import PermissionGuide
 // NSColor is immutable, so sharing a setup across threads is safe.
 public struct InstallerSetup: @unchecked Sendable {
     public var appName: String
-    public var steps: [InstallerStep]
+    /// The installer asks the app about each step by its `id`, so no two steps can share
+    /// one: list each permission, configuration and certificate once.
+    public var steps: [InstallerStep] {
+        didSet { Self.requireUniqueIDs(steps) }
+    }
     /// Where the app is installed. `nil` looks in /Applications, then ~/Applications.
     public var appURL: URL?
     /// Color of the System Settings highlight. The installer's own panes use system colors.
@@ -43,6 +47,17 @@ public struct InstallerSetup: @unchecked Sendable {
         self.showsIntroduction = showsIntroduction
         self.introduction = introduction
         self.launchesApp = launchesApp
+        Self.requireUniqueIDs(steps)
+    }
+
+    package static func duplicateIDs(in steps: [InstallerStep]) -> [String] {
+        var seen = Set<String>()
+        return steps.map(\.id).filter { !seen.insert($0).inserted }
+    }
+
+    private static func requireUniqueIDs(_ steps: [InstallerStep]) {
+        let duplicates = duplicateIDs(in: steps)
+        precondition(duplicates.isEmpty, "InstallerSetup lists the same step more than once: \(duplicates.joined(separator: ", "))")
     }
 
     package var resolvedAppURL: URL {

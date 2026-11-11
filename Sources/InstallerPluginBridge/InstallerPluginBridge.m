@@ -1,11 +1,11 @@
 #import "InstallerPluginBridge.h"
 #import <InstallerPlugins/InstallerPlugins.h>
 
-@interface PKInstallerPane : InstallerPane <PKPaneHost>
-@property (nonatomic, strong) id<PKPaneController> controller;
+@interface PermissionInstallerPane : InstallerPane <PermissionInstallerPaneHost>
+@property (nonatomic, strong) id<PermissionInstallerPaneController> controller;
 @end
 
-@implementation PKInstallerPane
+@implementation PermissionInstallerPane
 
 - (NSString *)title { return self.controller.title; }
 
@@ -13,7 +13,7 @@
 // over without ever being shown. Showing and then leaving them makes the window flash.
 - (InstallerPane *)nextPane {
     InstallerPane *next = [super nextPane];
-    if ([next isKindOfClass:PKInstallerPane.class] && ((PKInstallerPane *)next).controller.shouldSkip) {
+    if ([next isKindOfClass:PermissionInstallerPane.class] && ((PermissionInstallerPane *)next).controller.shouldSkip) {
         return next.nextPane;
     }
     return next;
@@ -48,11 +48,11 @@
 
 /// The bundle's NSPrincipalClass. Builds one pane per controller from the provider
 /// class named in Info.plist.
-@interface PKInstallerSection : InstallerSection
+@interface PermissionInstallerSection : InstallerSection
 @end
 
-@implementation PKInstallerSection {
-    NSArray<PKInstallerPane *> *_panes;
+@implementation PermissionInstallerSection {
+    NSArray<PermissionInstallerPane *> *_panes;
 }
 
 - (InstallerPane *)firstPane {
@@ -61,16 +61,16 @@
     NSBundle *bundle = [NSBundle bundleForClass:self.class];
     NSString *name = bundle.infoDictionary[@"PermissionInstallerProvider"];
     Class cls = name ? NSClassFromString(name) : Nil;
-    if (![cls conformsToProtocol:@protocol(PKPaneProvider)]) {
-        NSLog(@"PermissionInstaller: PermissionInstallerProvider '%@' isn't a PKPaneProvider class", name);
+    if (![cls instancesRespondToSelector:@selector(makePaneControllers)]) {
+        NSLog(@"PermissionInstaller: PermissionInstallerProvider '%@' isn't an InstallerPlugin subclass", name);
         _panes = @[];
         return nil;
     }
 
-    id<PKPaneProvider> provider = [[cls alloc] init];
-    NSMutableArray<PKInstallerPane *> *panes = [NSMutableArray array];
-    for (id<PKPaneController> controller in [provider makePaneControllers]) {
-        PKInstallerPane *pane = [[PKInstallerPane alloc] initWithSection:self];
+    id<PermissionInstallerPaneProvider> provider = [[cls alloc] init];
+    NSMutableArray<PermissionInstallerPane *> *panes = [NSMutableArray array];
+    for (id<PermissionInstallerPaneController> controller in [provider makePaneControllers]) {
+        PermissionInstallerPane *pane = [[PermissionInstallerPane alloc] initWithSection:self];
         pane.controller = controller;
         [controller attachHost:pane];
         panes.lastObject.nextPane = pane;

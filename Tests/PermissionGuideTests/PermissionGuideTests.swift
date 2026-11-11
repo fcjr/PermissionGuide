@@ -123,9 +123,9 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
 
     @Test func decodesExitStatus() {
         let asked: [Permission] = [.fullDiskAccess, .screenRecording, .inputMonitoring]
-        #expect(Probe.grants(fromExitStatus: PK_PROBE_ANSWERED, asked: asked) == [])
-        #expect(Probe.grants(fromExitStatus: PK_PROBE_ANSWERED | 0b001, asked: asked) == [.fullDiskAccess])
-        #expect(Probe.grants(fromExitStatus: PK_PROBE_ANSWERED | 0b110, asked: asked) == [.screenRecording, .inputMonitoring])
+        #expect(Probe.grants(fromExitStatus: PERMISSIONGUIDE_PROBE_ANSWERED, asked: asked) == [])
+        #expect(Probe.grants(fromExitStatus: PERMISSIONGUIDE_PROBE_ANSWERED | 0b001, asked: asked) == [.fullDiskAccess])
+        #expect(Probe.grants(fromExitStatus: PERMISSIONGUIDE_PROBE_ANSWERED | 0b110, asked: asked) == [.screenRecording, .inputMonitoring])
     }
 
     @Test func otherExitStatusesAreNotAnswers() {
@@ -133,7 +133,7 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
         #expect(Probe.grants(fromExitStatus: 0, asked: [.fullDiskAccess]) == nil)
         #expect(Probe.grants(fromExitStatus: 1, asked: [.fullDiskAccess]) == nil)
         #expect(Probe.grants(fromExitStatus: 2, asked: [.fullDiskAccess]) == nil)
-        #expect(Probe.grants(fromExitStatus: PK_PROBE_ANSWERED | 0x80, asked: [.fullDiskAccess]) == nil)
+        #expect(Probe.grants(fromExitStatus: PERMISSIONGUIDE_PROBE_ANSWERED | 0x80, asked: [.fullDiskAccess]) == nil)
     }
 
     @Test func constructorRanInThisProcess() {
@@ -168,5 +168,110 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
 
         let answer = await Probe.run([.fullDiskAccess, .screenRecording], executable: exe)
         #expect(answer != nil)
+    }
+}
+
+@Suite struct SystemExtensionSetupTests {
+    private static let networkEntitlement = "com.apple.developer.networking.networkextension"
+
+    /// An unsigned `.app` in a temporary folder, with the named extensions embedded.
+    private func makeApp(embedding identifiers: [String] = []) throws -> (bundle: Bundle, cleanUp: () -> Void) {
+        let root = FileManager.default.temporaryDirectory.appending(path: "pg-setup-\(UUID().uuidString)")
+        let app = root.appending(path: "Sample.app")
+        try write(["CFBundleIdentifier": "com.example.sample", "CFBundlePackageType": "APPL"], in: app)
+        for identifier in identifiers {
+            let ext = app.appending(path: "Contents/Library/SystemExtensions/\(identifier).systemextension")
+            try write(["CFBundleIdentifier": identifier, "CFBundlePackageType": "SYSX"], in: ext)
+        }
+        let bundle = try #require(Bundle(url: app))
+        return (bundle, { try? FileManager.default.removeItem(at: root) })
+    }
+
+    private func write(_ info: [String: String], in bundle: URL) throws {
+        let contents = bundle.appending(path: "Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+        try data.write(to: contents.appending(path: "Info.plist"))
+    }
+
+    @Test func anAppWithNothingSetUp() throws {
+        let (bundle, cleanUp) = try makeApp()
+        defer { cleanUp() }
+        let ext = SystemExtension(identifier: "com.example.sample.tunnel", category: .networkExtension, displayName: "Sample")
+        #expect(ext.embeddedURL(in: bundle) == nil)
+        #expect(ext.setupIssues(in: bundle) == [.appNotInApplicationsFolder, .appMissingInstallEntitlement, .extensionNotEmbedded])
+    }
+
+    @Test func findsTheEmbeddedExtensionByIdentifier() throws {
+        let (bundle, cleanUp) = try makeApp(embedding: ["com.example.sample.other", "com.example.sample.tunnel"])
+        defer { cleanUp() }
+        let ext = SystemExtension(identifier: "com.example.sample.tunnel", category: .networkExtension, displayName: "Sample")
+        let url = try #require(ext.embeddedURL(in: bundle))
+        #expect(url.lastPathComponent == "com.example.sample.tunnel.systemextension")
+
+        let missing = SystemExtension(identifier: "com.example.sample.nope", category: .networkExtension, displayName: "Sample")
+        #expect(missing.embeddedURL(in: bundle) == nil)
+        #expect(missing.setupIssues(in: bundle).contains(.extensionNotEmbedded))
+    }
+
+    @Test func anEmbeddedExtensionWithoutItsEntitlement() throws {
+        let (bundle, cleanUp) = try makeApp(embedding: ["com.example.sample.tunnel"])
+        defer { cleanUp() }
+        let ext = SystemExtension(identifier: "com.example.sample.tunnel", category: .networkExtension, displayName: "Sample")
+        #expect(ext.setupIssues(in: bundle) == [
+            .appNotInApplicationsFolder, .appMissingInstallEntitlement,
+            .extensionMissingEntitlement(Self.networkEntitlement),
+        ])
+    }
+
+    @Test func aCameraExtensionNeedsNoEntitlementOfItsOwn() throws {
+        let (bundle, cleanUp) = try makeApp(embedding: ["com.example.sample.camera"])
+        defer { cleanUp() }
+        let ext = SystemExtension(identifier: "com.example.sample.camera", category: .cameraExtension, displayName: "Sample")
+        #expect(ext.setupIssues(in: bundle) == [.appNotInApplicationsFolder, .appMissingInstallEntitlement])
+    }
+
+    /// Signs the bundles ad hoc with the entitlements macOS looks for, which leaves only
+    /// the app's location to complain about.
+    @Test func signedWithTheRightEntitlements() throws {
+        let (bundle, cleanUp) = try makeApp(embedding: ["com.example.sample.tunnel"])
+        defer { cleanUp() }
+        let ext = SystemExtension(identifier: "com.example.sample.tunnel", category: .networkExtension, displayName: "Sample")
+        let extURL = try #require(ext.embeddedURL(in: bundle))
+        try sign(extURL, entitlements: [Self.networkEntitlement: ["packet-tunnel-provider"]])
+        try sign(bundle.bundleURL, entitlements: ["com.apple.developer.system-extension.install": true])
+        #expect(ext.setupIssues(in: bundle) == [.appNotInApplicationsFolder])
+    }
+
+    @Test func everyIssueDescribesItself() {
+        let issues: [SystemExtension.SetupIssue] = [
+            .appNotInApplicationsFolder, .extensionNotEmbedded, .appMissingInstallEntitlement,
+            .extensionMissingEntitlement(Self.networkEntitlement),
+        ]
+        for issue in issues { #expect(!issue.description.isEmpty) }
+        #expect(issues[3].description.contains(Self.networkEntitlement))
+    }
+
+    private func sign(_ bundle: URL, entitlements: [String: Any]) throws {
+        // codesign needs something to sign as the bundle's executable.
+        let name = bundle.deletingPathExtension().lastPathComponent
+        let macOS = bundle.appending(path: "Contents/MacOS")
+        try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: URL(filePath: "/usr/bin/true"), to: macOS.appending(path: name))
+        var info = try #require(NSDictionary(contentsOf: bundle.appending(path: "Contents/Info.plist")) as? [String: Any])
+        info["CFBundleExecutable"] = name
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: bundle.appending(path: "Contents/Info.plist"))
+
+        let plist = bundle.deletingLastPathComponent().appending(path: "\(name).entitlements")
+        try PropertyListSerialization.data(fromPropertyList: entitlements, format: .xml, options: 0).write(to: plist)
+        defer { try? FileManager.default.removeItem(at: plist) }
+        let codesign = Process()
+        codesign.executableURL = URL(filePath: "/usr/bin/codesign")
+        codesign.arguments = ["--force", "--sign", "-", "--entitlements", plist.path, bundle.path]
+        codesign.standardError = FileHandle.nullDevice
+        try codesign.run()
+        codesign.waitUntilExit()
+        try #require(codesign.terminationStatus == 0)
     }
 }

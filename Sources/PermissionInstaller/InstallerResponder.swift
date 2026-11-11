@@ -10,7 +10,8 @@ extension InstallerSetup {
     /// system extensions and network configurations all belong to your app. For System
     /// Settings permissions, the app shows PermissionGuide's guide itself, without a Dock icon.
     @MainActor
-    public func handleInstallerLaunch(arguments: [String] = CommandLine.arguments) {
+    public func handleInstallerLaunch() {
+        let arguments = CommandLine.arguments
         guard let i = arguments.firstIndex(of: InstallerProtocol.flag), i + 2 < arguments.count else {
             // System Settings' "Quit & Reopen" relaunches the app normally. Mid-setup that
             // would open the app's windows over the installer, so step aside instead.

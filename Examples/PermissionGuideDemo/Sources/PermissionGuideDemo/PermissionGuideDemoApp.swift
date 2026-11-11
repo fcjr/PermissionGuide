@@ -147,7 +147,7 @@ extension Permission {
     ))
 
     var title: String {
-        guard case .systemExtension(let ext) = self else { return localizedName }
+        guard case .systemExtension(let ext) = self else { return displayName }
         return switch ext.category {
         case .networkExtension: "VPN"
         case .endpointSecurity: "Endpoint Security"

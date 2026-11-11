@@ -1,5 +1,5 @@
 import AppKit
-import InstallerPluginBridge
+internal import InstallerPluginBridge
 import PermissionInstaller
 
 /// Subclass this in your installer plugin and return your setup. Name the subclass in
@@ -12,14 +12,15 @@ import PermissionInstaller
 /// }
 /// ```
 @MainActor
-open class InstallerPlugin: NSObject, PKPaneProvider {
+open class InstallerPlugin: NSObject {
     open var setup: InstallerSetup {
         fatalError("Override InstallerPlugin.setup")
     }
 
-    public func makePaneControllers() -> [any PKPaneController] {
+    // Called by PermissionInstallerSection, by selector.
+    @objc func makePaneControllers() -> [any PermissionInstallerPaneController] {
         let session = SetupSession(setup: setup)
-        var panes: [any PKPaneController] = []
+        var panes: [any PermissionInstallerPaneController] = []
         if setup.showsIntroduction { panes.append(IntroPane(session: session)) }
         panes += session.steps
         panes.append(DonePane(session: session))
@@ -74,10 +75,10 @@ final class SetupSession {
 
 /// Lists the steps ahead and whether each can be skipped.
 @MainActor
-final class IntroPane: NSObject, PKPaneController {
+final class IntroPane: NSObject, PermissionInstallerPaneController {
     private let session: SetupSession
     private var setup: InstallerSetup { session.setup }
-    private weak var host: (any PKPaneHost)?
+    private weak var host: (any PermissionInstallerPaneHost)?
 
     init(session: SetupSession) {
         self.session = session
@@ -87,25 +88,32 @@ final class IntroPane: NSObject, PKPaneController {
 
     var title: String { "Set Up" }
 
-    lazy var view: NSView = {
+    /// The most steps the list shows at full size. Past this the pane tightens up, which
+    /// fits nine, and past that the list scrolls.
+    static let roomyStepCount = 6
+
+    private lazy var pane: PaneView = {
         let hasOptional = setup.steps.contains { $0.requirement == .optional }
+        let compact = setup.steps.count > Self.roomyStepCount
         let pane = PaneView(
             image: NSWorkspace.shared.icon(forFile: setup.resolvedAppURL.path),
             heading: "Finish setting up \(setup.appName)",
             message: setup.introduction ?? (hasOptional
                 ? "\(setup.appName) needs a few things from macOS. Optional steps can be set up later."
-                : "\(setup.appName) needs a few things from macOS.")
+                : "\(setup.appName) needs a few things from macOS."),
+            compact: compact
         )
         let list = NSStackView()
         list.orientation = .vertical
         list.alignment = .leading
-        list.spacing = 5
+        list.spacing = compact ? 3 : 5
         for step in setup.steps {
             let icon = NSImageView(image: NSImage(systemSymbolName: step.resolvedSymbolName(), accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 12, weight: .regular)) ?? NSImage())
+                .withSymbolConfiguration(.init(pointSize: compact ? 11 : 12, weight: .regular)) ?? NSImage())
             icon.contentTintColor = .controlAccentColor
             icon.widthAnchor.constraint(equalToConstant: 18).isActive = true
             let title = NSTextField(labelWithString: step.title)
+            if compact { title.font = .systemFont(ofSize: 12) }
             let row = NSStackView(views: [icon, title])
             row.spacing = 6
             if step.requirement == .optional {
@@ -116,11 +124,13 @@ final class IntroPane: NSObject, PKPaneController {
             }
             list.addArrangedSubview(row)
         }
-        pane.add(list)
-        return pane.view
+        pane.addScrolling(list)
+        return pane
     }()
 
-    func attach(_ host: any PKPaneHost) {
+    var view: NSView { pane.view }
+
+    func attach(_ host: any PermissionInstallerPaneHost) {
         self.host = host
     }
 
@@ -137,6 +147,7 @@ final class IntroPane: NSObject, PKPaneController {
     func didEnterForward(_ forward: Bool) {
         host?.previousEnabled = false
         host?.nextEnabled = true
+        pane.flashScrollers()
     }
 
     func shouldExitForward(_ forward: Bool) -> Bool { true }
@@ -145,10 +156,10 @@ final class IntroPane: NSObject, PKPaneController {
 
 /// Confirms setup, mentions skipped steps and opens the app.
 @MainActor
-final class DonePane: NSObject, PKPaneController {
+final class DonePane: NSObject, PermissionInstallerPaneController {
     private let session: SetupSession
     private var setup: InstallerSetup { session.setup }
-    private weak var host: (any PKPaneHost)?
+    private weak var host: (any PermissionInstallerPaneHost)?
     private let message = PaneView.label("", color: .secondaryLabelColor)
     private var launched = false
 
@@ -167,7 +178,7 @@ final class DonePane: NSObject, PKPaneController {
         return pane.view
     }()
 
-    func attach(_ host: any PKPaneHost) {
+    func attach(_ host: any PermissionInstallerPaneHost) {
         self.host = host
     }
 
