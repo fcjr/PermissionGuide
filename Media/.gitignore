@@ -1,0 +1,15 @@
+/target
+/out
+frames/
+strip.png
+onion.png
+
+# Apple's fonts can't be committed; build.rs copies them in from the system.
+media/*.otf
+media/*.ttf
+
+# Written by build.rs from sound/soundtrack.rs.
+media/soundtrack.wav
+
+# Local build settings, such as an SDKROOT override (see README).
+/.cargo/
