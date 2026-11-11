@@ -1,4 +1,4 @@
-set shell := ["bash", "-euo", "pipefail", "-c"]
+set shell := ["env", "-u", "SDKROOT", "-u", "DEVELOPER_DIR", "bash", "-euo", "pipefail", "-c"]
 
 pk_dir := "Examples/PermissionKitDemo"
 pk_app := pk_dir / "build/PermissionKitDemo.app"
@@ -28,6 +28,7 @@ demo-pkg: build-pkg
 build-demo:
     #!/usr/bin/env bash
     set -euo pipefail
+    unset SDKROOT DEVELOPER_DIR
     cd {{pk_dir}}
     swift build -c release
     BIN=$(swift build -c release --show-bin-path)
@@ -43,6 +44,7 @@ build-demo:
 build-pkg:
     #!/usr/bin/env bash
     set -euo pipefail
+    unset SDKROOT DEVELOPER_DIR
     cd {{inst_dir}}
     swift build -c release
     BIN=$(swift build -c release --show-bin-path)
