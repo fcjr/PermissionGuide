@@ -15,3 +15,7 @@
 /// Whether the probe's constructor ran in this process, which means a fresh launch of the
 /// app answers instead of starting up. Referenced from Swift so the linker keeps the probe.
 bool permissionguide_probe_linked(void);
+
+/// Whether this process has Full Disk Access, checked by opening files only it can open.
+/// Never prompts and is safe on any thread. May keep reading false until the app relaunches.
+bool permissionguide_full_disk_access(void);

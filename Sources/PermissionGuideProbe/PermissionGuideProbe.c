@@ -13,22 +13,31 @@ static bool pk_probe_ran = false;
 
 bool permissionguide_probe_linked(void) { return pk_probe_ran; }
 
-// Same check as Permission.currentStatus: TCC.db exists on every Mac and can only be
-// opened with Full Disk Access.
-static bool pk_full_disk_access(void) {
+// Files that exist on every Mac and can only be opened with Full Disk Access. The
+// per-user TCC.db is missing on some Macs (some macOS 27 installs), so the system one is
+// checked too.
+bool permissionguide_full_disk_access(void) {
     const struct passwd *user = getpwuid(getuid());
     const char *home = user != NULL ? user->pw_dir : getenv("HOME");
-    if (home == NULL) return false;
     char path[PATH_MAX];
-    snprintf(path, sizeof path, "%s/Library/Application Support/com.apple.TCC/TCC.db", home);
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) return false;
-    close(fd);
-    return true;
+    const char *paths[2] = {"/Library/Application Support/com.apple.TCC/TCC.db", NULL};
+    if (home != NULL) {
+        snprintf(path, sizeof path, "%s/Library/Application Support/com.apple.TCC/TCC.db", home);
+        paths[1] = path;
+    }
+    for (int i = 0; i < 2; i++) {
+        if (paths[i] == NULL) continue;
+        int fd = open(paths[i], O_RDONLY);
+        if (fd >= 0) {
+            close(fd);
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool pk_granted(const char *name) {
-    if (strcmp(name, "fullDiskAccess") == 0) return pk_full_disk_access();
+    if (strcmp(name, "fullDiskAccess") == 0) return permissionguide_full_disk_access();
     if (strcmp(name, "screenRecording") == 0) return CGPreflightScreenCaptureAccess();
     if (strcmp(name, "inputMonitoring") == 0) {
         return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted;

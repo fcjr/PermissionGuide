@@ -3,6 +3,7 @@ import ApplicationServices
 import CoreBluetooth
 import CoreGraphics
 import IOKit.hid
+import PermissionGuideProbe
 import ServiceManagement
 
 /// A permission the user grants by adding the app to, or switching it on in, System Settings.
@@ -82,12 +83,9 @@ public enum Permission: Hashable, Sendable {
     package var currentStatus: PermissionStatus? {
         switch self {
         case .fullDiskAccess:
-            // TCC.db exists on every Mac and can only be opened with Full Disk Access.
-            // May keep failing until the app relaunches.
-            let path = NSHomeDirectory() + "/Library/Application Support/com.apple.TCC/TCC.db"
-            guard let handle = FileHandle(forReadingAtPath: path) else { return .notGranted }
-            try? handle.close()
-            return .granted
+            // Opens files only Full Disk Access can (see PermissionGuideProbe.c). May keep
+            // failing until the app relaunches.
+            return permissionguide_full_disk_access() ? .granted : .notGranted
         case .screenRecording:
             // May keep reporting false until the app relaunches.
             return CGPreflightScreenCaptureAccess() ? .granted : .notGranted
