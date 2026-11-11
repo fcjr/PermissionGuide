@@ -1,7 +1,7 @@
 import AppKit
-import PermissionKitProbe
+import PermissionGuideProbe
 import Testing
-@testable import PermissionKit
+@testable import PermissionGuide
 
 private let window = NSRect(x: 0, y: 0, width: 800, height: 600)
 private let touchID = SystemSettings.Prompt.panel(NSRect(x: 260, y: 160, width: 280, height: 273), window: 1)
@@ -147,14 +147,14 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let source = URL(filePath: #filePath).deletingLastPathComponent()
-            .appending(path: "../../Sources/PermissionKitProbe").standardized
+            .appending(path: "../../Sources/PermissionGuideProbe").standardized
         let main = dir.appending(path: "main.c")
         try "int main(void) { return 7; }\n".write(to: main, atomically: true, encoding: .utf8)
         let exe = dir.appending(path: "probe-host")
         let cc = Process()
         cc.executableURL = URL(filePath: "/usr/bin/xcrun")
         cc.arguments = ["clang", "-I", source.appending(path: "include").path, main.path,
-                        source.appending(path: "PermissionKitProbe.c").path,
+                        source.appending(path: "PermissionGuideProbe.c").path,
                         "-framework", "CoreGraphics", "-framework", "IOKit", "-o", exe.path]
         try cc.run()
         cc.waitUntilExit()

@@ -1,6 +1,6 @@
 import AppKit
 import PermissionInstaller
-import PermissionKit
+import PermissionGuide
 
 extension InstallerSetup {
     public static let demo = InstallerSetup(

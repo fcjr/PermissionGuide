@@ -2,27 +2,27 @@
 import PackageDescription
 
 let package = Package(
-    name: "PermissionKit",
+    name: "PermissionGuide",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "PermissionKit", targets: ["PermissionKit"]),
+        .library(name: "PermissionGuide", targets: ["PermissionGuide"]),
         .library(name: "PermissionInstaller", targets: ["PermissionInstaller"]),
         .library(name: "PermissionInstallerPlugin", targets: ["PermissionInstallerPlugin"]),
     ],
     targets: [
         .target(
-            name: "PermissionKit",
-            dependencies: ["PermissionKitProbe"],
+            name: "PermissionGuide",
+            dependencies: ["PermissionGuideProbe"],
             linkerSettings: [.linkedFramework("ServiceManagement")]
         ),
         .target(
-            name: "PermissionKitProbe",
+            name: "PermissionGuideProbe",
             linkerSettings: [.linkedFramework("CoreGraphics"), .linkedFramework("IOKit")]
         ),
-        .testTarget(name: "PermissionKitTests", dependencies: ["PermissionKit"]),
+        .testTarget(name: "PermissionGuideTests", dependencies: ["PermissionGuide"]),
         .target(
             name: "PermissionInstaller",
-            dependencies: ["PermissionKit"],
+            dependencies: ["PermissionGuide"],
             linkerSettings: [.linkedFramework("NetworkExtension")]
         ),
         // Objective-C, because Swift can't import InstallerPlugins (its module map says `requires !swift`).

@@ -1,9 +1,11 @@
-# PermissionKit
+# PermissionGuide
 
-Guided permission setup for macOS apps. PermissionKit opens the right System Settings
+Guided permission setup for macOS apps. PermissionGuide opens the right System Settings
 pane, dims everything but the list the user needs, and docks a panel beside the window
 with your app's icon to drag in. For system extensions it points the user at the switch
 to turn on. It notices the grant and brings your app back to the front.
+
+![PermissionGuide walks a user through granting Accessibility: System Settings opens on the right pane, the list is highlighted, and the user drags the app in from a side panel.](Assets/drag.gif)
 
 Requires macOS 14.
 
@@ -35,10 +37,10 @@ Add the package in Xcode (File → Add Package Dependencies), or in `Package.swi
 
 ```swift
 dependencies: [
-    .package(path: "../PermissionKit"),  // or .package(url: "<repo URL>", from: "<version>")
+    .package(url: "https://github.com/fcjr/PermissionGuide.git", from: "0.1.0"),
 ],
 targets: [
-    .target(name: "MyApp", dependencies: ["PermissionKit"]),
+    .target(name: "MyApp", dependencies: ["PermissionGuide"]),
 ]
 ```
 
@@ -46,17 +48,17 @@ targets: [
 
 - **A real, signed `.app` bundle.** macOS tracks permissions per signed app, and the
   user drags the bundle itself. A bare `swift run` executable won't work.
-- **No App Sandbox.** PermissionKit is built for Developer ID apps. In a sandbox the Full
+- **No App Sandbox.** PermissionGuide is built for Developer ID apps. In a sandbox the Full
   Disk Access check looks inside the app's container and always fails, and system
   extensions can't be installed.
 - **`NSBluetoothAlwaysUsageDescription`** in Info.plist if you use `.bluetooth`.
 - **Your executable can be launched as a probe.** To see grants that only apply after a
-  relaunch, PermissionKit runs `Bundle.main.executableURL` with `PERMISSIONKIT_PROBE`
-  set. A C constructor in `PermissionKitProbe` answers through the exit status and exits
+  relaunch, PermissionGuide runs `Bundle.main.executableURL` with `PERMISSIONGUIDE_PROBE`
+  set. A C constructor in `PermissionGuideProbe` answers through the exit status and exits
   before `main`, so none of your startup code runs. This works on its own when the app
-  links PermissionKit, statically or not. Your own `__attribute__((constructor))` or
+  links PermissionGuide, statically or not. Your own `__attribute__((constructor))` or
   `+load` code can still run first, so keep it free of side effects. If the probe's
-  constructor didn't run in your process (it wasn't linked in), PermissionKit doesn't
+  constructor didn't run in your process (it wasn't linked in), PermissionGuide doesn't
   probe, so it never launches a second copy of your app.
 
 ## Usage
@@ -67,7 +69,7 @@ targets: [
 alive for as long as you need it, and list the permissions it should track:
 
 ```swift
-import PermissionKit
+import PermissionGuide
 
 @State private var permissions = PermissionManager(
     permissions: [.accessibility, .fullDiskAccess, .screenRecording]
@@ -138,7 +140,7 @@ default, `.quitAndReopen`, suggests restarting.
 Full Disk Access, Screen Recording and Input Monitoring
 (`permission.mayNeedRelaunch`) can keep reading as `.notGranted` in the running app
 after the user grants them. System Settings then offers **Quit & Reopen** or **Later**.
-PermissionKit checks these from a fresh copy of your app (see
+PermissionGuide checks these from a fresh copy of your app (see
 [App requirements](#app-requirements)), so:
 
 - **Quit & Reopen:** macOS quits your app. The guide closes on the way out, and code
@@ -192,7 +194,7 @@ struct PermissionsView: View {
 }
 ```
 
-`Examples/PermissionKitDemo` is a fuller version of this screen.
+`Examples/PermissionGuideDemo` is a fuller version of this screen.
 
 ### Helpers
 
@@ -208,7 +210,7 @@ await permissions.request(
 )
 ```
 
-Without `isGranted`, the panel shows a Done button, because PermissionKit can't tell when
+Without `isGranted`, the panel shows a Done button, because PermissionGuide can't tell when
 the helper has been granted.
 
 ### System extensions
@@ -226,6 +228,8 @@ let permissions = PermissionManager(permissions: [.fullDiskAccess, .systemExtens
 
 Categories: `.networkExtension` (VPN providers, content filters, DNS proxies),
 `.endpointSecurity`, `.driverExtension` and `.cameraExtension`.
+
+![The guide highlights a network extension's switch in System Settings and tells the user to turn it on.](Assets/extension.gif)
 
 #### Before you request
 
@@ -262,7 +266,7 @@ if vpn.setupIssues().isEmpty {
 
 `request` submits `OSSystemExtensionRequest.activationRequest`, which installs the
 extension: macOS copies it out of your app bundle and asks the user to approve it.
-PermissionKit then opens the extension pane and guides the user to the switch. It
+PermissionGuide then opens the extension pane and guides the user to the switch. It
 returns `.granted` once the extension is active, `.failed(error)` if activation fails, and
 `.cancelled` if the user cancels.
 
@@ -278,7 +282,7 @@ func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
 `guide(to:)` works for privacy panes too. For those it does the same thing as `request`.
 
 A VPN also has to save its configuration (`NETunnelProviderManager.saveToPreferences`),
-which shows a separate "Add VPN Configurations" alert that PermissionKit doesn't guide.
+which shows a separate "Add VPN Configurations" alert that PermissionGuide doesn't guide.
 Endpoint Security clients usually also need `.fullDiskAccess`, granted to the extension:
 pass the extension's URL (`vpn.embeddedURL()`) as `dragging:` along with an `isGranted:`
 check.
@@ -322,7 +326,7 @@ many items sit above it. The app has to be signed (Developer ID) for macOS to re
 - **Window tracking:** `CGWindowListCopyWindowInfo` gives System Settings' window frame
   without any permission. A timer in common run loop modes keeps the panels attached
   while the window moves, including during a drag.
-- **Highlight:** With Accessibility permission, PermissionKit reads the list's exact frame.
+- **Highlight:** With Accessibility permission, PermissionGuide reads the list's exact frame.
   Without it, the highlight is placed from System Settings' layout (measured on macOS 27)
   and covers the first two rows. Extension switches are found from the sheet's frame.
   Once the grant has gone through (the user clicked Later on "Quit & Reopen"), and
@@ -331,12 +335,12 @@ many items sit above it. The app has to be signed (Developer ID) for macOS to re
   list and told apart by the order they appear in and their size. While "Quit & Reopen"
   is up, the guide waits for the user's answer even if the grant is already visible.
 - **Probe:** For permissions that may need a relaunch, a fresh copy of the app reports
-  what it has through its exit status (`PermissionKitProbe`), at most every 1.5 seconds
+  what it has through its exit status (`PermissionGuideProbe`), at most every 1.5 seconds
   during a request and every 5 seconds otherwise, only while one is missing.
 - **Drag:** The icon's pasteboard item is the app's file URL. Dropping it into a privacy
   list adds the app, the same as picking it with "+".
 - **Sheets:** System Settings ignores deep links while a sheet is open, and it can't be
-  closed without Accessibility. When one is open, PermissionKit quits System Settings
+  closed without Accessibility. When one is open, PermissionGuide quits System Settings
   and reopens it on the right pane. While guiding a drag, the highlight hides whenever a
   sheet (such as the "+" file picker) covers the list.
 - **Placement:** The panel docks to the right of the window, or to the left, or over the
@@ -352,6 +356,8 @@ and the last pane lists anything skipped and opens your app.
 
 Steps can be any System Settings permission above, a VPN or proxy configuration, a
 trusted root certificate, or your own step.
+
+![An installer's Set Up section: a list of steps, a step that opens the guide, and a final pane once it's done.](Assets/installer.gif)
 
 ### 1. Define the setup
 
@@ -405,7 +411,7 @@ struct MyApp: App {
 ```
 
 It returns right away on a normal launch. When the installer launched the app, it checks
-or performs the step (showing PermissionKit's guide, without a Dock icon) and exits.
+or performs the step (showing PermissionGuide's guide, without a Dock icon) and exits.
 
 ### 3. Build the plugin
 
@@ -443,7 +449,7 @@ Developer ID for release.
 The examples build with [just](https://github.com/casey/just). Run `just` to list recipes.
 
 ```sh
-just demo       # build and open PermissionKitDemo.app
+just demo       # build and open PermissionGuideDemo.app
 just demo-pkg   # build and open InstallerDemo.pkg
 ```
 
@@ -454,6 +460,12 @@ build output with `just clean`.
 The installer demo has a required Full Disk Access step, a required custom step, and
 optional steps for every other kind. Its VPN, Endpoint Security and VPN configuration
 steps fail on purpose: the demo has no real extension or Network Extension entitlement.
+
+## Media
+
+The GIFs above and the release teaser are animations drawn in code, not screen recordings.
+Their source is in [`Media/`](Media), and `just media` renders all of them again. See
+[`Media/README.md`](Media/README.md) for what it needs.
 
 ## License
 

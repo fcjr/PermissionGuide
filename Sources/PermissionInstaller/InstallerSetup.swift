@@ -1,5 +1,5 @@
 import AppKit
-import PermissionKit
+import PermissionGuide
 
 /// The setup section your installer shows after Install. Define it once, in code that
 /// both your app and your installer plugin compile.

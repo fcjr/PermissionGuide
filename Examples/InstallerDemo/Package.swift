@@ -9,15 +9,15 @@ let package = Package(
         .library(name: "InstallerDemoPlugin", type: .dynamic, targets: ["InstallerDemoPlugin"]),
     ],
     dependencies: [
-        .package(name: "PermissionKit", path: "../.."),
+        .package(name: "PermissionGuide", path: "../.."),
     ],
     targets: [
         // The setup is shared: the plugin shows it, the app performs its steps.
-        .target(name: "DemoSetup", dependencies: [.product(name: "PermissionInstaller", package: "PermissionKit")]),
+        .target(name: "DemoSetup", dependencies: [.product(name: "PermissionInstaller", package: "PermissionGuide")]),
         .executableTarget(name: "InstallerDemo", dependencies: ["DemoSetup"]),
         .target(name: "InstallerDemoPlugin", dependencies: [
             "DemoSetup",
-            .product(name: "PermissionInstallerPlugin", package: "PermissionKit"),
+            .product(name: "PermissionInstallerPlugin", package: "PermissionGuide"),
         ]),
     ]
 )

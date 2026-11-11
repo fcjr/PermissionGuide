@@ -1,8 +1,8 @@
 set shell := ["env", "-u", "SDKROOT", "-u", "DEVELOPER_DIR", "bash", "-euo", "pipefail", "-c"]
 
-pk_dir := "Examples/PermissionKitDemo"
-pk_app := pk_dir / "build/PermissionKitDemo.app"
-pk_id := "com.example.permissionkitdemo"
+pk_dir := "Examples/PermissionGuideDemo"
+pk_app := pk_dir / "build/PermissionGuideDemo.app"
+pk_id := "com.example.permissionguidedemo"
 
 inst_dir := "Examples/InstallerDemo"
 inst_out := inst_dir / "build"
@@ -16,7 +16,7 @@ default:
 build:
     swift build
 
-# Build, then open PermissionKitDemo.app
+# Build, then open PermissionGuideDemo.app
 demo: build-demo
     open {{pk_app}}
 
@@ -24,7 +24,7 @@ demo: build-demo
 demo-pkg: build-pkg
     open {{inst_pkg}}
 
-# Build and ad-hoc sign PermissionKitDemo.app (TCC needs a real app bundle)
+# Build and ad-hoc sign PermissionGuideDemo.app (TCC needs a real app bundle)
 build-demo:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -32,10 +32,10 @@ build-demo:
     cd {{pk_dir}}
     swift build -c release
     BIN=$(swift build -c release --show-bin-path)
-    APP=build/PermissionKitDemo.app
+    APP=build/PermissionGuideDemo.app
     rm -rf "$APP"
     mkdir -p "$APP/Contents/MacOS"
-    cp "$BIN/PermissionKitDemo" "$APP/Contents/MacOS/"
+    cp "$BIN/PermissionGuideDemo" "$APP/Contents/MacOS/"
     cp Resources/Info.plist "$APP/Contents/"
     codesign --force --sign - "$APP"
     echo "Built {{pk_app}}"
@@ -94,6 +94,18 @@ uninstall-pkg:
     sudo rm -rf /Applications/InstallerDemo.app
     -sudo pkgutil --forget {{inst_id}}.pkg
 
+# Render the README's GIFs (Assets/) and the release teaser (Media/out/)
+media:
+    Media/render.sh
+
+# Render only the README's GIFs
+gifs:
+    Media/render.sh gifs
+
+# Render only the release teaser, with sound
+teaser:
+    Media/render.sh teaser
+
 # Delete all build output
 clean:
-    rm -rf .build {{pk_dir}}/.build {{pk_dir}}/build {{inst_dir}}/.build {{inst_out}}
+    rm -rf .build {{pk_dir}}/.build {{pk_dir}}/build {{inst_dir}}/.build {{inst_out}} Media/target Media/out

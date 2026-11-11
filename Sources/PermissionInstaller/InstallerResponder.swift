@@ -1,5 +1,5 @@
 import AppKit
-import PermissionKit
+import PermissionGuide
 
 extension InstallerSetup {
     /// Call this first thing when your app launches, before any UI. When the installer
@@ -8,7 +8,7 @@ extension InstallerSetup {
     ///
     /// The installer runs these as your app, not as Installer, so permission checks,
     /// system extensions and network configurations all belong to your app. For System
-    /// Settings permissions, the app shows PermissionKit's guide itself, without a Dock icon.
+    /// Settings permissions, the app shows PermissionGuide's guide itself, without a Dock icon.
     @MainActor
     public func handleInstallerLaunch(arguments: [String] = CommandLine.arguments) {
         guard let i = arguments.firstIndex(of: InstallerProtocol.flag), i + 2 < arguments.count else {

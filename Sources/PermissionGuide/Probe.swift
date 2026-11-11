@@ -1,14 +1,14 @@
 import Foundation
-import PermissionKitProbe
+import PermissionGuideProbe
 
 /// Asks a fresh copy of the app which permissions it has.
 ///
 /// Some grants only reach a process when it starts, so the running app can keep reading
 /// them as denied (see `Permission.mayNeedRelaunch`). The probe relaunches the app's
-/// executable with `PK_PROBE_ENV` set. A C constructor in PermissionKitProbe answers
+/// executable with `PK_PROBE_ENV` set. A C constructor in PermissionGuideProbe answers
 /// through the exit status before `main`, so none of the app's own startup code runs.
 enum Probe {
-    /// The name PermissionKitProbe.c checks a permission by, for permissions it can check.
+    /// The name PermissionGuideProbe.c checks a permission by, for permissions it can check.
     static func name(for permission: Permission) -> String? {
         switch permission {
         case .fullDiskAccess: "fullDiskAccess"
@@ -20,7 +20,7 @@ enum Probe {
 
     /// Whether launching this executable runs the probe. When the constructor didn't run
     /// here (the probe object wasn't linked in), a launch would start a second copy of the
-    /// app instead, so PermissionKit doesn't probe at all.
+    /// app instead, so PermissionGuide doesn't probe at all.
     static var isAvailable: Bool { pk_probe_linked() }
 
     /// The permissions one probe asks about: those it can check, at most `PK_PROBE_CAPACITY`.

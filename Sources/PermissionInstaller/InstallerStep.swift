@@ -1,5 +1,5 @@
 import Foundation
-import PermissionKit
+import PermissionGuide
 
 /// One pane in the installer's setup section.
 public struct InstallerStep: Identifiable, Sendable {

@@ -1,8 +1,8 @@
-import PermissionKit
+import PermissionGuide
 import SwiftUI
 
 @main
-struct PermissionKitDemoApp: App {
+struct PermissionGuideDemoApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var permissions = PermissionManager(
         permissions: Permission.privacyPermissions + [.vpn, .endpointSecurity]
@@ -136,14 +136,14 @@ struct PermissionRow: View {
 extension Permission {
     // Placeholder identifiers: a real app embeds these in Contents/Library/SystemExtensions.
     static let vpn = Permission.systemExtension(SystemExtension(
-        identifier: "com.example.permissionkitdemo.tunnel",
+        identifier: "com.example.permissionguidedemo.tunnel",
         category: .networkExtension,
-        displayName: "PermissionKit Demo"
+        displayName: "PermissionGuide Demo"
     ))
     static let endpointSecurity = Permission.systemExtension(SystemExtension(
-        identifier: "com.example.permissionkitdemo.security",
+        identifier: "com.example.permissionguidedemo.security",
         category: .endpointSecurity,
-        displayName: "PermissionKit Demo"
+        displayName: "PermissionGuide Demo"
     ))
 
     var title: String {
