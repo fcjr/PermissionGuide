@@ -444,6 +444,22 @@ Installer warns that the package "will run a program to determine if the softwar
 installed" whenever it has a plugin. Sign the plugin, app and package with your
 Developer ID for release.
 
+## Hand it to your agent
+
+[`llms.txt`](llms.txt) is the short version of this README, written for a coding agent: what
+to check in the app first, the four steps, the API, and the cases that trip people up.
+Point your agent at it and say which permissions you need:
+
+```text
+Add PermissionGuide to this app: https://github.com/fcjr/PermissionGuide
+
+Read https://raw.githubusercontent.com/fcjr/PermissionGuide/main/llms.txt before you write
+anything, and check the app against its "Check the app first" list.
+
+Then build a permissions screen for: <Accessibility, Full Disk Access, ...>
+Show each one's status, give each a Grant button, and handle every result of request().
+```
+
 ## Examples
 
 The examples build with [just](https://github.com/casey/just). Run `just` to list recipes.

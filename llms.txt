@@ -1,0 +1,123 @@
+# PermissionGuide
+
+> Swift package for macOS 14+. It walks a user through granting a System Settings permission: it opens the right pane, dims everything except the list, and docks a panel with the app's icon to drag in. For system extensions and background items it points at the switch. It returns when macOS reports the grant and brings the app back to the front.
+
+You are probably here because a Mac app needs Full Disk Access, Accessibility, Screen Recording, Input Monitoring, Bluetooth, Developer Tools, App Management, a system extension, or an SMAppService background item. Those are the permissions a user has to grant by hand in System Settings, and this package covers all of them.
+
+Camera, Microphone, Automation and Files & Folders are a different kind. macOS only lists an app there after it calls the framework's own request API, so call that API instead.
+
+## Check the app first
+
+PermissionGuide only works in an app that meets these. Check before writing code, and tell the user if one fails.
+
+- The app runs as a signed `.app` bundle. macOS tracks permissions per signed app and the user drags the bundle itself, so a bare `swift run` executable gets nowhere.
+- The app has no App Sandbox entitlement. In a sandbox the Full Disk Access check reads the container and always fails, and system extensions can't install.
+- Info.plist has `NSBluetoothAlwaysUsageDescription` if you track `.bluetooth`.
+- Code that runs before `main` (`+load`, `__attribute__((constructor))`) has no side effects. To see a grant that only applies after a relaunch, PermissionGuide launches the app's own executable with `PERMISSIONGUIDE_PROBE` set. A C constructor answers through the exit status and exits before `main`, so normal startup code never runs in the probe.
+
+## Install
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/fcjr/PermissionGuide.git", from: "0.1.0"),
+],
+targets: [
+    .target(name: "MyApp", dependencies: ["PermissionGuide"]),
+]
+```
+
+Products: `PermissionGuide` (the guide), `PermissionInstaller` and `PermissionInstallerPlugin` (setup steps inside a `.pkg`).
+
+## Integrate
+
+1. Create one `PermissionManager` and keep it alive. It is `@Observable` and runs on the main actor, so SwiftUI views that read it update as grants change.
+
+```swift
+import PermissionGuide
+
+@State private var permissions = PermissionManager(
+    permissions: [.accessibility, .fullDiskAccess]
+)
+```
+
+2. Read status wherever you need it. Reading never shows a prompt.
+
+```swift
+permissions.status(of: .accessibility)   // .granted, .notGranted, or .unknown
+```
+
+`.unknown` means macOS has no API to check it (Developer Tools, App Management). Treat it as "ask the user", and the guide shows a Done button for those.
+
+3. Request from a user action, such as a button. Handle all four results.
+
+```swift
+switch await permissions.request(.accessibility) {
+case .granted: break          // macOS reports it granted
+case .confirmed: break        // the user clicked Done on a permission macOS can't check
+case .cancelled: break        // the user cancelled, or another request replaced this one
+case .failed(let error): show(error)   // a system extension failed to activate
+}
+```
+
+`request` returns `.granted` right away when the permission is already granted, so it is safe to call without checking first. `result.isGranted` is true for `.granted` and `.confirmed`.
+
+4. For Full Disk Access, Screen Recording and Input Monitoring, check `needsRelaunch` after a grant. These can return `.granted` while the running process still can't use them.
+
+```swift
+if permissions.needsRelaunch(.fullDiskAccess) {
+    offerRestart()   // relaunch however the app does it
+}
+```
+
+Save any in-progress work before calling `request` for one of these. If the user clicks Quit & Reopen in System Settings, macOS quits the app and code after the `await` may never run.
+
+You are done when the app builds, the screen shows each tracked permission's status, and every `request` call handles `.cancelled` and `.failed`.
+
+## API
+
+| | |
+| --- | --- |
+| `PermissionManager(permissions:pollInterval:)` | Tracks the permissions you list. Defaults to `Permission.privacyPermissions`, polled every 0.75 s. |
+| `status(of:)`, `statuses` | Current status. Observable. |
+| `pending` | The permission whose guide is showing, if any. |
+| `request(_:dragging:tint:isGranted:)` | Runs the guide. Installs a system extension or registers a background item first. |
+| `guide(to:dragging:tint:isGranted:)` | Runs the guide without requesting anything. For apps that submit their own `OSSystemExtensionRequest`. |
+| `cancel()` | Closes the guide. The pending call returns `.cancelled`. |
+| `refresh()` | Re-checks now. |
+| `needsRelaunch(_:)`, `relaunchPending` | Granted, but this process has to restart to use it. |
+| `relaunchChoice` | `.quitAndReopen` (default) or `.later`. Which button the guide points at on the Quit & Reopen alert. |
+| `Permission.localizedName`, `.settingsURL`, `.mayNeedRelaunch` | Pane name, deep link, and whether a grant can wait for a relaunch. |
+| `SystemExtension(identifier:category:displayName:)` | Describes an embedded extension. Categories: `.networkExtension`, `.endpointSecurity`, `.driverExtension`, `.cameraExtension`. |
+| `SystemExtension.setupIssues(in:)` | What stops activation. Empty when ready. |
+
+## Cases that need more than the defaults
+
+A helper process needs the permission. Pass the helper's bundle to drag and a check that can see the helper's permissions, such as an IPC call. Without `isGranted` the guide shows a Done button.
+
+```swift
+await permissions.request(
+    .fullDiskAccess,
+    dragging: Bundle.main.bundleURL.appending(path: "Contents/Helpers/MyHelper.app"),
+    isGranted: { helper.reportsFullDiskAccess }
+)
+```
+
+A system extension. Check `setupIssues()` and surface what it returns before requesting. macOS refuses activation when the app is outside `/Applications`, lacks `com.apple.developer.system-extension.install`, or the extension is missing from `Contents/Library/SystemExtensions`.
+
+```swift
+let vpn = SystemExtension(identifier: "com.example.app.tunnel", category: .networkExtension, displayName: "Example VPN")
+if vpn.setupIssues().isEmpty {
+    let result = await permissions.request(.systemExtension(vpn))
+}
+```
+
+A background item. `request(.backgroundItem(daemonPlist: "com.example.daemon.plist"))` registers the `SMAppService` daemon, then guides the user to Allow in the Background.
+
+A `.pkg` installer. `PermissionInstaller` adds a Set Up section after Install with one pane per step. The app performs each step, so the grants belong to the app. Call `InstallerSetup.handleInstallerLaunch()` first thing in the app's `init`. The plugin bundle and its Info.plist keys are in the README.
+
+## Where to read more
+
+- [README](https://github.com/fcjr/PermissionGuide/blob/main/README.md): every option, system extensions in detail, the installer walkthrough, and how the guide finds windows and prompts.
+- [Examples/PermissionGuideDemo](https://github.com/fcjr/PermissionGuide/tree/main/Examples/PermissionGuideDemo): a SwiftUI permissions screen, including background items.
+- [Examples/InstallerDemo](https://github.com/fcjr/PermissionGuide/tree/main/Examples/InstallerDemo): an app, its installer plugin, and the `.pkg` build. The `build-pkg` recipe in the `justfile` assembles it.
