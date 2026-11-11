@@ -1,5 +1,10 @@
 #include "PermissionGuideProbe.h"
 #include <CoreGraphics/CoreGraphics.h>
+#include <errno.h>
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <IOKit/hidsystem/IOHIDLib.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -8,6 +13,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+extern char **environ;
+
+// libSystem SPI (Chromium and LLDB use it): the child becomes its own responsible
+// process, so TCC checks the app's grants afresh instead of inheriting the parent's.
+int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim) __attribute__((weak_import));
 
 static bool pk_probe_ran = false;
 
@@ -64,4 +75,58 @@ static void pk_probe(void) {
     }
     // _exit skips atexit handlers that other libraries' initializers may have registered.
     _exit(answer);
+}
+
+int permissionguide_probe_spawn(const char *executable, const char *value, double timeout) {
+    size_t prefix = strlen(PERMISSIONGUIDE_PROBE_ENV) + 1;
+    size_t count = 0;
+    while (environ[count] != NULL) count++;
+    char **env = calloc(count + 2, sizeof *env);
+    char *entry = malloc(prefix + strlen(value) + 1);
+    if (env == NULL || entry == NULL) {
+        free(env);
+        free(entry);
+        return -1;
+    }
+    sprintf(entry, "%s=%s", PERMISSIONGUIDE_PROBE_ENV, value);
+    size_t n = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (strncmp(environ[i], PERMISSIONGUIDE_PROBE_ENV "=", prefix) != 0) env[n++] = environ[i];
+    }
+    env[n++] = entry;
+    env[n] = NULL;
+
+    posix_spawnattr_t attrs;
+    posix_spawn_file_actions_t files;
+    posix_spawnattr_init(&attrs);
+    posix_spawn_file_actions_init(&files);
+    if (responsibility_spawnattrs_setdisclaim != NULL) responsibility_spawnattrs_setdisclaim(&attrs, 1);
+    for (int fd = 0; fd <= 2; fd++) {
+        posix_spawn_file_actions_addopen(&files, fd, "/dev/null", fd == 0 ? O_RDONLY : O_WRONLY, 0);
+    }
+    char *argv[] = {(char *)executable, NULL};
+    pid_t pid;
+    int spawned = posix_spawn(&pid, executable, &files, &attrs, argv, env);
+    posix_spawn_file_actions_destroy(&files);
+    posix_spawnattr_destroy(&attrs);
+    free(entry);
+    free(env);
+    if (spawned != 0) return -1;
+
+    // The probe answers in well under a second. Something that runs this long is the
+    // app starting up instead, so stop it.
+    struct timespec tick = {0, 10 * 1000 * 1000};
+    int status = 0;
+    for (double waited = 0;; waited += 0.01) {
+        pid_t done = waitpid(pid, &status, WNOHANG);
+        if (done == pid) break;
+        if (done < 0 && errno != EINTR) return -1;
+        if (waited >= timeout) {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+            return -1;
+        }
+        nanosleep(&tick, NULL);
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }

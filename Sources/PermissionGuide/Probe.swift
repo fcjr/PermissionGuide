@@ -40,33 +40,17 @@ enum Probe {
         return Set(asked.enumerated().filter { status & (1 << $0.offset) != 0 }.map(\.element))
     }
 
-    /// Launches `executable` as a probe. `nil` when it couldn't answer.
+    /// Launches `executable` as a probe. `nil` when it couldn't answer. The probe disclaims
+    /// this process as responsible for it, so TCC checks the app's grants as a fresh launch
+    /// would instead of reusing what it decided for this one (seen with Full Disk Access).
     static func run(_ permissions: [Permission], executable: URL, timeout: TimeInterval = 10) async -> Set<Permission>? {
         let asked = asked(permissions)
         guard !asked.isEmpty, isAvailable else { return nil }
         let value = environmentValue(for: asked)
         return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = executable
-            process.environment = ProcessInfo.processInfo.environment.merging([PERMISSIONGUIDE_PROBE_ENV: value]) { $1 }
-            process.standardInput = FileHandle.nullDevice
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { process in
-                let answer = process.terminationReason == .exit
-                    ? grants(fromExitStatus: process.terminationStatus, asked: asked) : nil
-                continuation.resume(returning: answer)
-            }
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: nil)
-                return
-            }
-            // The probe answers in well under a second. Something that runs this long is
-            // the app starting up instead, so stop it.
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
-                if process.isRunning { process.terminate() }
+            DispatchQueue.global().async {
+                let status = permissionguide_probe_spawn(executable.path, value, timeout)
+                continuation.resume(returning: status < 0 ? nil : grants(fromExitStatus: status, asked: asked))
             }
         }
     }
