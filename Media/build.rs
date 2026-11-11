@@ -9,12 +9,13 @@ mod timing;
 mod soundtrack;
 
 /// SF Pro comes from Apple's font download; Monaco ships with macOS.
-const FONTS: [&str; 6] = [
+const FONTS: [&str; 7] = [
     "/Library/Fonts/SF-Pro-Text-Regular.otf",
     "/Library/Fonts/SF-Pro-Text-Medium.otf",
     "/Library/Fonts/SF-Pro-Text-Semibold.otf",
     "/Library/Fonts/SF-Pro-Display-Semibold.otf",
     "/Library/Fonts/SF-Pro-Display-Bold.otf",
+    "/Library/Fonts/SF-Pro-Display-Black.otf",
     "/System/Library/Fonts/Monaco.ttf",
 ];
 

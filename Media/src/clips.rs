@@ -1,5 +1,5 @@
 //! The README's clips: the stage on a wallpaper, 1200x750 at 25 fps (a GIF frame is 40 ms).
-use crate::timing::{Beats, DRAG, INSTALLER, INSTALLER_CONTINUE, INSTALLER_FINISH, TOGGLE};
+use crate::timing::{Beats, DRAG, INSTALLER, InstallerBeats, TOGGLE};
 use crate::*;
 use fframes::{AudioMap, Color, Duration, FFramesContext, Frame};
 
@@ -28,7 +28,7 @@ impl Video for Clip<'_> {
         Duration::Seconds(match self.kind {
             ClipKind::Drag => DRAG.end,
             ClipKind::Extension => TOGGLE.end,
-            ClipKind::Installer => INSTALLER.end,
+            ClipKind::Installer => INSTALLER.guide.end,
         })
     }
 
@@ -124,10 +124,10 @@ fn step_pane(d: f32, b: &Beats) -> Svgr<'static> {
     </g>)
 }
 
-fn done_pane(d: f32) -> Svgr<'static> {
+fn done_pane(d: f32, finish: f32) -> Svgr<'static> {
     let at = [BOX_CX, BOX_Y + 96.0];
     fframes::svgr!(<g>
-        <g transform={grow(at, spring(d, INSTALLER_FINISH))}>{check(at[0], at[1], 26.0)}</g>
+        <g transform={grow(at, spring(d, finish))}>{check(at[0], at[1], 26.0)}</g>
         {centered(BOX_Y + 154.0, 17.0, "700", INK, "MyApp is ready")}
         {centered(BOX_Y + 180.0, 13.0, "400", SECOND, "MyApp is opening. You can close the installer.")}
         {centered(BOX_Y + 214.0, 13.0, "400", SECOND, "You skipped Certificate. You can set it up later in MyApp.")}
@@ -135,7 +135,8 @@ fn done_pane(d: f32) -> Svgr<'static> {
 }
 
 /// Installer's window on the Set Up section.
-fn installer_window(d: f32, b: &Beats) -> Svgr<'static> {
+fn installer_window(d: f32, i: &InstallerBeats) -> Svgr<'static> {
+    let b = &i.guide;
     let shown = (1.0 - span(d, b.open, 0.25)).max(ease_out(span(d, b.back, 0.35)));
     if shown <= 0.0 {
         return Svgr::empty();
@@ -157,9 +158,9 @@ fn installer_window(d: f32, b: &Beats) -> Svgr<'static> {
             </g>)
         })
         .collect();
-    let to_step = span(d, INSTALLER_CONTINUE + 0.05, 0.2);
-    let to_done = span(d, INSTALLER_FINISH, 0.2);
-    let last = d >= INSTALLER_FINISH;
+    let to_step = span(d, i.cont + 0.05, 0.15);
+    let to_done = span(d, i.finish, 0.15);
+    let last = d >= i.finish;
     fframes::svgr!(<g opacity={shown} transform={grow([IX + IW / 2.0, IY + IH / 2.0], scale)}>
         <rect x={IX} y={IY} width={IW} height={IH} rx="12" fill="#ececee" filter="url(#window-shadow)" />
         <rect x={IX + 0.5} y={IY + 0.5} width={IW - 1.0} height={IH - 1.0} rx="11.5" fill="none" stroke="#000" stroke-opacity="0.18" stroke-width="1" />
@@ -170,23 +171,24 @@ fn installer_window(d: f32, b: &Beats) -> Svgr<'static> {
         <rect x={BOX_X} y={BOX_Y} width={BOX_W} height={BOX_H} rx="6" fill="#fff" stroke={LINE} stroke-width="1" />
         <g opacity={1.0 - to_step}>{intro_pane()}</g>
         <g opacity={to_step * (1.0 - to_done)}>{step_pane(d, b)}</g>
-        <g opacity={to_done}>{done_pane(d)}</g>
+        <g opacity={to_done}>{done_pane(d, i.finish)}</g>
         {button(CONTINUE[0] - 134.0, CONTINUE[1] - 12.0, 82.0, 24.0, "Go Back", false, false)}
-        {button(CONTINUE[0] - 42.0, CONTINUE[1] - 12.0, 84.0, 24.0, if last { "Close" } else { "Continue" }, true, d < INSTALLER_CONTINUE || d >= b.granted)}
+        {button(CONTINUE[0] - 42.0, CONTINUE[1] - 12.0, 84.0, 24.0, if last { "Close" } else { "Continue" }, true, d < i.cont || d >= b.granted)}
     </g>)
 }
 
 /// A .pkg's Set Up section: the intro, a step that runs the guide, and the last pane.
-pub fn installer_demo(d: f32, b: &Beats) -> Svgr<'static> {
+pub fn installer_demo(d: f32, i: &InstallerBeats) -> Svgr<'static> {
+    let b = &i.guide;
     let (at, kind) = if d < b.reach {
-        let keys = [(0.2, [CONTINUE[0] - 120.0, CONTINUE[1] - 90.0]), (INSTALLER_CONTINUE - 0.15, CONTINUE), (INSTALLER_CONTINUE + 0.3, CONTINUE), (b.click - 0.15, OPEN_SETTINGS)];
+        let keys = [(i.cont * 0.15, [CONTINUE[0] - 120.0, CONTINUE[1] - 90.0]), (i.cont - 0.12, CONTINUE), (i.cont + 0.15, CONTINUE), (b.click - 0.12, OPEN_SETTINGS)];
         (track(d, &keys), Pointer::Arrow)
     } else {
         guide_pointer(Mode::Drag, d, b, OPEN_SETTINGS)
     };
     fframes::svgr!(<g>
-        {installer_window(d, b)}
+        {installer_window(d, i)}
         {guide_stage(Mode::Drag, d, b, at)}
-        {cursor(d, at, kind, &[INSTALLER_CONTINUE, b.click])}
+        {cursor(d, at, kind, &[i.cont, b.click])}
     </g>)
 }

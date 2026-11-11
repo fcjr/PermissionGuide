@@ -10,7 +10,7 @@ permission and use Touch ID each time, so it couldn't be rendered again unattend
 | `src/timing.rs` | every time in the clips and the teaser |
 | `src/lib.rs` | System Settings, the highlight, the side panel, the drag hint, the app window |
 | `src/clips.rs` | the three README clips, and the installer window |
-| `src/teaser.rs` | the teaser's six scenes |
+| `src/teaser.rs` | the teaser's seven scenes |
 | `sound/soundtrack.rs` | the teaser's music and interface sounds |
 | `build.rs` | writes the soundtrack and copies the fonts into `media/` |
 
@@ -21,7 +21,7 @@ From the repository root:
 ```sh
 just media    # everything
 just gifs     # Assets/drag.gif, Assets/extension.gif, Assets/installer.gif
-just teaser   # Media/out/permissionguide-teaser.mp4, 1920x1080 at 60 fps with sound
+just teaser   # Media/out/permissionguide-teaser.mp4, 24 s, 1920x1080 at 60 fps with sound
 ```
 
 The GIFs are committed, because the README shows them. The teaser is not: render it when you
@@ -58,15 +58,27 @@ cargo build --release --bins
 `render.sh` passes bindgen this Mac's target. Without it, a `LIBCLANG_PATH` that points at a
 cross-compiling toolchain fails the build with "Unsupported architecture".
 
+## The teaser
+
+It is cut for a social feed. The problem is on screen in the first two seconds, every beat
+has a caption so it reads with the sound off, and scenes cut on the bar with a flash
+instead of fading. In order: the instructions apps give today, the name, the drag, the
+one-line call, the `.pkg` installer, the other permissions, and the link.
+
+The demo scenes reuse the README clips' drawing with shorter timelines (`TEASER_DRAG`,
+`TEASER_INSTALLER` in `src/timing.rs`).
+
 ## Sound
 
-`sound/soundtrack.rs` synthesizes the whole soundtrack from sine waves and seeded noise: no
+`sound/soundtrack.rs` synthesizes the whole soundtrack from oscillators and seeded noise: no
 samples, loops or third-party audio, so there is nothing to license, and the same source
-always gives the same file. It is a 100 BPM bed in D major under interface sounds: a pop per
-step in the hook, clicks, a whoosh when a window opens or closes, a chime when Touch ID
-succeeds and another when the permission is granted, and a key press per typed character.
+always gives the same file. It is 120 BPM in D minor. The hook is a drone and ticking hats,
+a riser leads into the title, and from there a driven bass, kick and clap run under the
+interface sounds: a thud per instruction, an impact on each title, clicks, a whoosh when a
+window opens or closes, a chime when Touch ID succeeds and another on the grant, and a key
+press per typed character.
 
 It reads its times from `src/timing.rs`, the same constants the scenes are drawn from. Every
-scene starts on a bar (2.4 s), so keep scene lengths in multiples of `BEAT` if you change
-them. `build.rs` runs it before the crate compiles and writes `media/soundtrack.wav`, which
-the teaser plays through `Video::audio`. Levels are `MUSIC` and `SFX` at the top of the file.
+scene starts on a bar (2 s), so keep scene lengths in multiples of `BAR` if you change them.
+`build.rs` runs it before the crate compiles and writes `media/soundtrack.wav`, which the
+teaser plays through `Video::audio`. Levels are `MUSIC` and `SFX` at the top of the file.
