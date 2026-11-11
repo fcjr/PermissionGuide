@@ -22,10 +22,10 @@ It can also add a Set Up section to your `.pkg` installer.
 
 ## Use it with your agent
 
-Paste this into your coding agent, with the permissions you need:
+Paste this into your coding agent:
 
 ```text
-Add PermissionGuide (https://github.com/fcjr/PermissionGuide) to this app. Read https://raw.githubusercontent.com/fcjr/PermissionGuide/main/llms.txt first, then build a permissions screen for <Accessibility, Full Disk Access, ...> that shows each one's status and has a Grant button.
+Add PermissionGuide (https://github.com/fcjr/PermissionGuide) to this app. Read https://raw.githubusercontent.com/fcjr/PermissionGuide/main/llms.txt first, then build a permissions screen for the permissions my app needs, showing each one's status with a Grant button. If you are unsure which permissions we need, ask me.
 ```
 
 ## Add it
@@ -45,7 +45,4 @@ just demo       # build and open PermissionGuideDemo.app
 just demo-pkg   # build and open InstallerDemo.pkg
 ```
 
-The demos need [just](https://github.com/casey/just). They are ad-hoc signed, so macOS
-treats each rebuild as a new app; `just reset` clears the old grants.
-
-MIT. The GIFs are drawn in code, from [`Media/`](Media).
+MIT.
