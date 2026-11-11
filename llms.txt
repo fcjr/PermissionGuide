@@ -114,10 +114,12 @@ if vpn.setupIssues().isEmpty {
 
 A background item. `request(.backgroundItem(daemonPlist: "com.example.daemon.plist"))` registers the `SMAppService` daemon, then guides the user to Allow in the Background.
 
-A `.pkg` installer. `PermissionInstaller` adds a Set Up section after Install with one pane per step. The app performs each step, so the grants belong to the app. Call `InstallerSetup.handleInstallerLaunch()` first thing in the app's `init`. The plugin bundle and its Info.plist keys are in the README.
+A `.pkg` installer. `PermissionInstaller` adds a Set Up section after Install with one pane per step. The app performs each step, so the grants belong to the app. Call `InstallerSetup.handleInstallerLaunch()` first thing in the app's `init`. The plugin bundle and its Info.plist keys are in [docs/installer.md](https://github.com/fcjr/PermissionGuide/blob/main/docs/installer.md).
 
 ## Where to read more
 
-- [README](https://github.com/fcjr/PermissionGuide/blob/main/README.md): every option, system extensions in detail, the installer walkthrough, and how the guide finds windows and prompts.
+- [docs/guide.md](https://github.com/fcjr/PermissionGuide/blob/main/docs/guide.md): every option, helpers, system extensions and background items in detail.
+- [docs/installer.md](https://github.com/fcjr/PermissionGuide/blob/main/docs/installer.md): the installer walkthrough.
+- [docs/how-it-works.md](https://github.com/fcjr/PermissionGuide/blob/main/docs/how-it-works.md): how the guide finds windows and prompts.
 - [Examples/PermissionGuideDemo](https://github.com/fcjr/PermissionGuide/tree/main/Examples/PermissionGuideDemo): a SwiftUI permissions screen, including background items.
 - [Examples/InstallerDemo](https://github.com/fcjr/PermissionGuide/tree/main/Examples/InstallerDemo): an app, its installer plugin, and the `.pkg` build. The `build-pkg` recipe in the `justfile` assembles it.
