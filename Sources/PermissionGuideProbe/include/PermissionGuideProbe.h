@@ -20,6 +20,11 @@ bool permissionguide_probe_linked(void);
 /// Never prompts and is safe on any thread. May keep reading false until the app relaunches.
 bool permissionguide_full_disk_access(void);
 
+/// Whether System Integrity Protection's filesystem protection is off. The files
+/// `permissionguide_full_disk_access` opens are then readable by every process, so it
+/// reads true whether or not Full Disk Access was granted.
+bool permissionguide_filesystem_protection_disabled(void);
+
 /// Launches `executable` as a probe with `PERMISSIONGUIDE_PROBE_ENV` set to `value`, as its
 /// own responsible process so TCC checks the app's grants as a fresh launch would. Blocks
 /// until it exits; kills it after `timeout` seconds. The exit status, or -1 when it didn't

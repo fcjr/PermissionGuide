@@ -84,7 +84,9 @@ public enum Permission: Hashable, Sendable {
         switch self {
         case .fullDiskAccess:
             // Opens files only Full Disk Access can (see PermissionGuideProbe.c). May keep
-            // failing until the app relaunches.
+            // failing until the app relaunches. With System Integrity Protection off those
+            // files open for every process, so the check says nothing.
+            if permissionguide_filesystem_protection_disabled() { return .unknown }
             return permissionguide_full_disk_access() ? .granted : .notGranted
         case .screenRecording:
             // May keep reporting false until the app relaunches.
@@ -117,7 +119,8 @@ extension Permission: Identifiable {
 public enum PermissionStatus: Sendable {
     case granted
     case notGranted
-    /// macOS offers no way to check this permission.
+    /// The permission can't be checked: macOS has no API for it, or (Full Disk Access)
+    /// System Integrity Protection is off.
     case unknown
 }
 

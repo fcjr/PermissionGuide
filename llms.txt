@@ -47,7 +47,7 @@ import PermissionGuide
 permissions.status(of: .accessibility)   // .granted, .notGranted, or .unknown
 ```
 
-`.unknown` means macOS has no API to check it (Developer Tools, App Management). Treat it as "ask the user", and the guide shows a Done button for those.
+`.unknown` means it can't be checked: macOS has no API for it (Developer Tools, App Management), or it is Full Disk Access on a Mac with System Integrity Protection off, where the check would pass for every process. Treat it as "ask the user", and the guide shows a Done button for those.
 
 3. Request from a user action, such as a button. Handle all four results.
 

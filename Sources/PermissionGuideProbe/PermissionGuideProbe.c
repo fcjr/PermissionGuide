@@ -2,6 +2,7 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdint.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -19,6 +20,10 @@ extern char **environ;
 // libSystem SPI (Chromium and LLDB use it): the child becomes its own responsible
 // process, so TCC checks the app's grants afresh instead of inheriting the parent's.
 int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim) __attribute__((weak_import));
+
+// libSystem SPI: 0 when the running system allows what `mask` names.
+int csr_check(uint32_t mask) __attribute__((weak_import));
+#define PK_CSR_ALLOW_UNRESTRICTED_FS (1 << 1)
 
 static bool pk_probe_ran = false;
 
@@ -45,6 +50,10 @@ bool permissionguide_full_disk_access(void) {
         }
     }
     return false;
+}
+
+bool permissionguide_filesystem_protection_disabled(void) {
+    return csr_check != NULL && csr_check(PK_CSR_ALLOW_UNRESTRICTED_FS) == 0;
 }
 
 static bool pk_granted(const char *name) {

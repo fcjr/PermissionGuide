@@ -7,7 +7,7 @@ how the guide finds windows and prompts see [how-it-works.md](how-it-works.md).
 
 | Permission | Pane | Status check |
 | --- | --- | --- |
-| `.fullDiskAccess` | Full Disk Access | ✓ (may need a relaunch) |
+| `.fullDiskAccess` | Full Disk Access | ✓ (may need a relaunch; not with SIP off) |
 | `.screenRecording` | Screen & System Audio Recording | ✓ (may need a relaunch) |
 | `.accessibility` | Accessibility | ✓ |
 | `.inputMonitoring` | Input Monitoring | ✓ (may need a relaunch) |
@@ -65,12 +65,17 @@ by themselves.
 switch permissions.status(of: .fullDiskAccess) {
 case .granted: …
 case .notGranted: …
-case .unknown: …   // macOS can't report it (Developer Tools, App Management)
+case .unknown: …   // can't be checked (Developer Tools, App Management)
 }
 
 permissions.statuses   // [Permission: PermissionStatus] for every tracked permission
 permissions.pending    // the permission whose guide is showing, if any
 ```
+
+Full Disk Access also reads `.unknown` on a Mac with System Integrity Protection turned
+off. The check opens files that only Full Disk Access can open, and with SIP off every
+process can open them. The guide shows a Done button there, as it does for the
+permissions macOS can't report.
 
 Checking never shows a system prompt.
 

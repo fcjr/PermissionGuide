@@ -171,6 +171,15 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
     }
 }
 
+@Suite struct StatusTests {
+    /// With System Integrity Protection off, the files the check opens are readable
+    /// without Full Disk Access, so "granted" would be wrong on every such Mac.
+    @Test func fullDiskAccessIsUnknownWithoutFilesystemProtection() {
+        let unprotected = permissionguide_filesystem_protection_disabled()
+        #expect((Permission.fullDiskAccess.currentStatus == .unknown) == unprotected)
+    }
+}
+
 @Suite struct SystemExtensionSetupTests {
     private static let networkEntitlement = "com.apple.developer.networking.networkextension"
 
