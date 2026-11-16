@@ -7,8 +7,18 @@ final class SettingsGuide {
         /// Drag the app into a privacy pane's list. `confirmManually` adds a Done button
         /// for when the grant can't be detected.
         case drag(Permission, confirmManually: Bool)
-        /// Switch on a system extension.
+        /// Turn on a switch: a system extension's, a background item's, or the one beside
+        /// an app a privacy pane already lists.
         case toggle(Permission, confirmManually: Bool)
+
+        init(_ permission: Permission, alreadyListed: Bool, confirmManually: Bool) {
+            self = switch permission {
+            case .systemExtension, .backgroundItem: .toggle(permission, confirmManually: confirmManually)
+            default: alreadyListed
+                ? .toggle(permission, confirmManually: confirmManually)
+                : .drag(permission, confirmManually: confirmManually)
+            }
+        }
 
         var permission: Permission {
             switch self {
@@ -19,6 +29,29 @@ final class SettingsGuide {
         var confirmManually: Bool {
             switch self {
             case .drag(_, let c), .toggle(_, let c): c
+            }
+        }
+
+        /// Whether the switch is in a sheet over the pane rather than in the pane's list.
+        var targetIsInSheet: Bool {
+            switch self {
+            case .toggle(.systemExtension, _), .toggle(.backgroundItem, _): true
+            case .drag, .toggle: false
+            }
+        }
+
+        /// The sidecar's instructions, where `subject` is what the guide calls the bundle.
+        func instructions(subject: String) -> (title: String, message: String) {
+            let name = permission.displayName
+            return switch self {
+            case .drag:
+                ("Grant \(name)", "Drag this icon into the highlighted list in System Settings.")
+            case .toggle(.backgroundItem, _):
+                ("Allow in the Background", "Turn on the switch next to \(subject) under Allow in the Background.")
+            case .toggle(.systemExtension(let ext), _):
+                ("Allow \(ext.category.displayName)", "Turn on the switch next to \(name) in System Settings.")
+            case .toggle:
+                ("Grant \(name)", "Turn on the switch next to \(subject) in the highlighted list in System Settings.")
             }
         }
     }
@@ -73,28 +106,11 @@ final class SettingsGuide {
         appName = subject.displayName
         let appURL = subject.url
         let icon = subject.displayIcon
-        let name = mode.permission.displayName
-
-        let sidecar: SidecarPanel
-        switch mode {
-        case .drag(_, let confirmManually):
-            sidecar = SidecarPanel(
-                title: "Grant \(name)",
-                message: "Drag this icon into the highlighted list in System Settings.",
-                icon: icon, dragURL: appURL, showsDone: confirmManually, tint: tint)
-        case .toggle(.backgroundItem, let confirmManually):
-            sidecar = SidecarPanel(
-                title: "Allow in the Background",
-                message: "Turn on the switch next to \(appName) under Allow in the Background.",
-                icon: icon, dragURL: nil, showsDone: confirmManually, tint: tint)
-        case .toggle(let permission, let confirmManually):
-            let kind = if case .systemExtension(let ext) = permission { ext.category.displayName } else { name }
-            sidecar = SidecarPanel(
-                title: "Allow \(kind)",
-                message: "Turn on the switch next to \(name) in System Settings.",
-                icon: icon, dragURL: nil, showsDone: confirmManually, tint: tint)
-        }
-        instructions = (sidecar.instructionTitle, sidecar.instructionMessage)
+        instructions = mode.instructions(subject: appName)
+        let dragURL: URL? = if case .drag = mode { appURL } else { nil }
+        let sidecar = SidecarPanel(
+            title: instructions.title, message: instructions.message,
+            icon: icon, dragURL: dragURL, showsDone: mode.confirmManually, tint: tint)
         sidecar.onCancel = { [weak self] in self?.onCancel?() }
         sidecar.onDone = { [weak self] in self?.onDone?() }
         sidecar.iconView.onDragChanged = { [weak self] dragging in
@@ -166,7 +182,7 @@ final class SettingsGuide {
         let showsHighlight = switch phase {
         case .prompt: true
         case .afterAuthentication, .granted: false
-        case .instructions: if case .toggle = mode { sheet != nil } else { sheet == nil }
+        case .instructions: mode.targetIsInSheet ? sheet != nil : sheet == nil
         }
         let showsGhost = showsHighlight && prompt == nil && !isDragging
         // Right after authenticating, keep the last text until the next prompt shows.

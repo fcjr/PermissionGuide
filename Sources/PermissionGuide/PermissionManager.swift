@@ -109,6 +109,7 @@ public final class PermissionManager {
         dragging appURL: URL = Bundle.main.bundleURL,
         named name: String? = nil,
         icon: NSImage? = nil,
+        alreadyListed: Bool = false,
         tint: NSColor = .controlAccentColor,
         isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
@@ -121,10 +122,10 @@ public final class PermissionManager {
                     if service.status != .requiresApproval { return .failed(error) }
                 }
             }
-            return await guide(to: permission, dragging: appURL, named: name, icon: icon, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, alreadyListed: alreadyListed, tint: tint, isGranted: isGranted)
         }
         guard case .systemExtension(let ext) = permission else {
-            return await guide(to: permission, dragging: appURL, named: name, icon: icon, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, alreadyListed: alreadyListed, tint: tint, isGranted: isGranted)
         }
         if status(of: permission) == .granted { return .granted }
 
@@ -133,7 +134,7 @@ public final class PermissionManager {
             guard let self, self.pending == permission else { return }
             switch event {
             case .needsUserApproval:
-                self.showGuide(for: permission, subject: subject, tint: tint, canCheck: isGranted != nil)
+                self.showGuide(for: permission, subject: subject, alreadyListed: alreadyListed, tint: tint, canCheck: isGranted != nil)
             case .activated:
                 self.set(.granted, for: permission)
                 self.finish(.granted)
@@ -149,8 +150,9 @@ public final class PermissionManager {
     /// Opens System Settings at the permission's pane and walks the user through it,
     /// without requesting anything from macOS.
     ///
-    /// For a privacy pane, the user drags `appURL` into the highlighted list. For a system
-    /// extension, the user turns on its switch; use this when your app submits its own
+    /// For a privacy pane, the user drags `appURL` into the highlighted list, or turns on
+    /// its switch there when `alreadyListed`. For a system extension, the user turns on
+    /// its switch; use this when your app submits its own
     /// `OSSystemExtensionRequest` and gets `requestNeedsUserApproval`.
     ///
     /// - Parameters:
@@ -160,6 +162,10 @@ public final class PermissionManager {
     ///     for a system extension is its file name.
     ///   - icon: The icon the guide shows for it. Defaults to the bundle's own, which is a
     ///     generic one for a helper that ships without an icon.
+    ///   - alreadyListed: Whether the privacy pane's list already holds the bundle,
+    ///     switched off, so the user turns on its switch instead of dragging it in. macOS
+    ///     lists some helpers itself once they ask for access, such as an Endpoint
+    ///     Security extension in Full Disk Access.
     ///   - tint: Color of the highlight and sidecar border.
     ///   - isGranted: How to tell the permission was granted, for when the default check
     ///     can't see it (such as a helper's permissions). It can be `async`, to ask the
@@ -172,6 +178,7 @@ public final class PermissionManager {
         dragging appURL: URL = Bundle.main.bundleURL,
         named name: String? = nil,
         icon: NSImage? = nil,
+        alreadyListed: Bool = false,
         tint: NSColor = .controlAccentColor,
         isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
@@ -186,7 +193,7 @@ public final class PermissionManager {
 
         begin(permission, isGranted: isGranted)
         let subject = SettingsGuide.Subject(url: appURL, name: name, icon: icon)
-        showGuide(for: permission, subject: subject, tint: tint, canCheck: isGranted != nil)
+        showGuide(for: permission, subject: subject, alreadyListed: alreadyListed, tint: tint, canCheck: isGranted != nil)
         return await waitForGrant()
     }
 
@@ -201,13 +208,10 @@ public final class PermissionManager {
         pendingCheck = isGranted
     }
 
-    private func showGuide(for permission: Permission, subject: SettingsGuide.Subject, tint: NSColor, canCheck: Bool) {
+    private func showGuide(for permission: Permission, subject: SettingsGuide.Subject, alreadyListed: Bool, tint: NSColor, canCheck: Bool) {
         let isOwnApp = subject.url == Bundle.main.bundleURL
         let canVerify = canCheck || (isOwnApp && status(of: permission) != .unknown)
-        let mode: SettingsGuide.Mode = switch permission {
-        case .systemExtension, .backgroundItem: .toggle(permission, confirmManually: !canVerify)
-        default: .drag(permission, confirmManually: !canVerify)
-        }
+        let mode = SettingsGuide.Mode(permission, alreadyListed: alreadyListed, confirmManually: !canVerify)
         SystemSettings.open(permission.settingsURL)
         guide.start(mode, subject: subject, tint: tint, relaunch: relaunchChoice)
     }

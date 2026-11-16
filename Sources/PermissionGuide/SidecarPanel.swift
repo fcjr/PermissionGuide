@@ -84,9 +84,6 @@ final class SidecarPanel: NSPanel {
         setContentSize(size)
     }
 
-    var instructionTitle: String { titleLabel.stringValue }
-    var instructionMessage: String { hint.stringValue }
-
     /// Replaces the instructions, keeping the panel's top edge in place.
     func show(title: String, message: String) {
         titleLabel.stringValue = title

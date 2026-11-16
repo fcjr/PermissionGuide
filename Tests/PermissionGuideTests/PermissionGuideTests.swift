@@ -208,6 +208,36 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
     }
 }
 
+@Suite @MainActor struct GuideModeTests {
+    private let ext = SystemExtension(identifier: "com.example.sample.tunnel", category: .networkExtension, displayName: "Sample VPN")
+
+    @Test func aPrivacyPaneIsADragUnlessTheListAlreadyHoldsTheApp() {
+        let drag = SettingsGuide.Mode(.fullDiskAccess, alreadyListed: false, confirmManually: false)
+        guard case .drag = drag else { Issue.record("expected a drag"); return }
+        #expect(drag.instructions(subject: "Sample").message.contains("Drag this icon"))
+
+        let toggle = SettingsGuide.Mode(.fullDiskAccess, alreadyListed: true, confirmManually: false)
+        guard case .toggle = toggle else { Issue.record("expected a toggle"); return }
+        #expect(toggle.instructions(subject: "Sample").title == "Grant Full Disk Access")
+        #expect(toggle.instructions(subject: "Sample").message == "Turn on the switch next to Sample in the highlighted list in System Settings.")
+        #expect(!toggle.targetIsInSheet, "the switch is in the pane's list, not in a sheet over it")
+    }
+
+    @Test func extensionsAndBackgroundItemsAreSwitchesEitherWay() {
+        for listed in [false, true] {
+            let mode = SettingsGuide.Mode(.systemExtension(ext), alreadyListed: listed, confirmManually: false)
+            #expect(mode.targetIsInSheet)
+            #expect(mode.instructions(subject: "Sample").title == "Allow Network Extension")
+            #expect(mode.instructions(subject: "Sample").message == "Turn on the switch next to Sample VPN in System Settings.")
+
+            let background = SettingsGuide.Mode(.backgroundItem(daemonPlist: "com.example.daemon.plist"), alreadyListed: listed, confirmManually: true)
+            #expect(background.targetIsInSheet)
+            #expect(background.confirmManually)
+            #expect(background.instructions(subject: "Sample").message == "Turn on the switch next to Sample under Allow in the Background.")
+        }
+    }
+}
+
 @Suite struct SystemExtensionSetupTests {
     private static let networkEntitlement = "com.apple.developer.networking.networkextension"
 

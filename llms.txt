@@ -81,8 +81,8 @@ You are done when the app builds, the screen shows each tracked permission's sta
 | `PermissionManager(permissions:pollInterval:)` | Tracks the permissions you list. Defaults to `Permission.privacyPermissions`, polled every 0.75 s. |
 | `status(of:)`, `statuses` | Current status. Observable. |
 | `pending` | The permission whose guide is showing, if any. |
-| `request(_:dragging:named:icon:tint:isGranted:)` | Runs the guide. Installs a system extension or registers a background item first. |
-| `guide(to:dragging:named:icon:tint:isGranted:)` | Runs the guide without requesting anything. For apps that submit their own `OSSystemExtensionRequest`. |
+| `request(_:dragging:named:icon:alreadyListed:tint:isGranted:)` | Runs the guide. Installs a system extension or registers a background item first. |
+| `guide(to:dragging:named:icon:alreadyListed:tint:isGranted:)` | Runs the guide without requesting anything. For apps that submit their own `OSSystemExtensionRequest`. |
 | `cancel()` | Closes the guide. The pending call returns `.cancelled`. |
 | `refresh()` | Re-checks now. |
 | `needsRelaunch(_:)` | Granted, but this process has to restart to use it. |
@@ -93,7 +93,7 @@ You are done when the app builds, the screen shows each tracked permission's sta
 
 ## Cases that need more than the defaults
 
-A helper process needs the permission. Pass the helper's bundle to drag and a check that can see the helper's permissions, such as an IPC call. `isGranted` can be `async`. Without it the guide shows a Done button. The panel shows the helper's own icon and Finder name; pass `named:` and `icon:` when those are generic, as they are for a system extension.
+A helper process needs the permission. Pass the helper's bundle to drag and a check that can see the helper's permissions, such as an IPC call. `isGranted` can be `async`. Without it the guide shows a Done button. The panel shows the helper's own icon and Finder name; pass `named:` and `icon:` when those are generic, as they are for a system extension. If macOS already lists the helper in the pane, switched off, pass `alreadyListed: true` and the guide points at its switch instead of asking for a drag.
 
 ```swift
 await permissions.request(
