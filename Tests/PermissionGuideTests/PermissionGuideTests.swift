@@ -192,6 +192,22 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
     }
 }
 
+@Suite @MainActor struct GuideSubjectTests {
+    private let helper = URL(filePath: "/Applications/Sample.app/Contents/Library/SystemExtensions/com.example.sample.monitor.systemextension")
+
+    @Test func aBundleIsNamedAfterItsFile() {
+        #expect(SettingsGuide.Subject(url: URL(filePath: "/Applications/Sample.app")).displayName == "Sample")
+        #expect(SettingsGuide.Subject(url: helper).displayName == "com.example.sample.monitor.systemextension")
+    }
+
+    @Test func aGivenNameAndIconReplaceTheBundlesOwn() {
+        let icon = NSImage(size: NSSize(width: 8, height: 8))
+        let subject = SettingsGuide.Subject(url: helper, name: "Sample", icon: icon)
+        #expect(subject.displayName == "Sample")
+        #expect(subject.displayIcon === icon)
+    }
+}
+
 @Suite struct SystemExtensionSetupTests {
     private static let networkEntitlement = "com.apple.developer.networking.networkextension"
 

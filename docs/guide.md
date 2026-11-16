@@ -109,6 +109,8 @@ Options:
 await permissions.request(
     .screenRecording,
     dragging: helperURL,                 // bundle to drag in; defaults to your app
+    named: "Recorder",                   // what the guide calls it; defaults to its Finder name
+    icon: recorderIcon,                  // defaults to the bundle's own icon
     tint: .systemPurple,                 // highlight and panel color
     isGranted: { helper.canRecord }      // custom check, for when the default can't see it
 )
@@ -200,6 +202,21 @@ for each call to return before making the next.
 
 Without `isGranted`, the panel shows a Done button, because PermissionGuide can't tell when
 the helper has been granted.
+
+The panel shows the helper's own icon and Finder name. A helper with no icon gets a
+generic one, and a system extension's name is its file name
+(`com.example.app.monitor.systemextension`). Pass `named:` and `icon:` to show something
+the user recognises:
+
+```swift
+await permissions.request(
+    .fullDiskAccess,
+    dragging: helperURL,
+    named: "Example",
+    icon: NSApp.applicationIconImage,
+    isGranted: { await helper.hasFullDiskAccess() }
+)
+```
 
 ## System extensions
 
@@ -300,8 +317,8 @@ many items sit above it. The app has to be signed (Developer ID) for macOS to re
 | `status(of:)`, `statuses` | Current status: `.granted`, `.notGranted` or `.unknown` |
 | `pending` | The permission whose guide is showing |
 | `needsRelaunch(_:)` | Granted, but the app must relaunch to use it |
-| `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
-| `guide(to:dragging:tint:isGranted:)` | Guides the user without requesting anything |
+| `request(_:dragging:named:icon:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
+| `guide(to:dragging:named:icon:tint:isGranted:)` | Guides the user without requesting anything |
 | `cancel()` | Closes the guide; the pending call returns `.cancelled` |
 | `refresh()` | Re-checks status now |
 | `Permission.displayName`, `.settingsURL` | Pane name and deep link |

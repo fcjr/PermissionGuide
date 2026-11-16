@@ -107,9 +107,12 @@ public final class PermissionManager {
     public func request(
         _ permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
+        named name: String? = nil,
+        icon: NSImage? = nil,
         tint: NSColor = .controlAccentColor,
         isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
+        let subject = SettingsGuide.Subject(url: appURL, name: name, icon: icon)
         if case .backgroundItem(let plist) = permission {
             let service = SMAppService.daemon(plistName: plist)
             if service.status == .notRegistered || service.status == .notFound {
@@ -118,10 +121,10 @@ public final class PermissionManager {
                     if service.status != .requiresApproval { return .failed(error) }
                 }
             }
-            return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, tint: tint, isGranted: isGranted)
         }
         guard case .systemExtension(let ext) = permission else {
-            return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, tint: tint, isGranted: isGranted)
         }
         if status(of: permission) == .granted { return .granted }
 
@@ -130,7 +133,7 @@ public final class PermissionManager {
             guard let self, self.pending == permission else { return }
             switch event {
             case .needsUserApproval:
-                self.showGuide(for: permission, appURL: appURL, tint: tint, isGranted: isGranted)
+                self.showGuide(for: permission, subject: subject, tint: tint, canCheck: isGranted != nil)
             case .activated:
                 self.set(.granted, for: permission)
                 self.finish(.granted)
@@ -153,6 +156,10 @@ public final class PermissionManager {
     /// - Parameters:
     ///   - appURL: The bundle the user drags into System Settings. Pass a helper's URL when
     ///     a helper, not the main app, is the process that needs the permission.
+    ///   - name: What the guide calls that bundle. Defaults to its name in Finder, which
+    ///     for a system extension is its file name.
+    ///   - icon: The icon the guide shows for it. Defaults to the bundle's own, which is a
+    ///     generic one for a helper that ships without an icon.
     ///   - tint: Color of the highlight and sidecar border.
     ///   - isGranted: How to tell the permission was granted, for when the default check
     ///     can't see it (such as a helper's permissions). It can be `async`, to ask the
@@ -163,6 +170,8 @@ public final class PermissionManager {
     public func guide(
         to permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
+        named name: String? = nil,
+        icon: NSImage? = nil,
         tint: NSColor = .controlAccentColor,
         isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
@@ -176,7 +185,8 @@ public final class PermissionManager {
         }
 
         begin(permission, isGranted: isGranted)
-        showGuide(for: permission, appURL: appURL, tint: tint, isGranted: isGranted)
+        let subject = SettingsGuide.Subject(url: appURL, name: name, icon: icon)
+        showGuide(for: permission, subject: subject, tint: tint, canCheck: isGranted != nil)
         return await waitForGrant()
     }
 
@@ -191,15 +201,15 @@ public final class PermissionManager {
         pendingCheck = isGranted
     }
 
-    private func showGuide(for permission: Permission, appURL: URL, tint: NSColor, isGranted: (@MainActor () async -> Bool)?) {
-        let isOwnApp = appURL == Bundle.main.bundleURL
-        let canVerify = isGranted != nil || (isOwnApp && status(of: permission) != .unknown)
+    private func showGuide(for permission: Permission, subject: SettingsGuide.Subject, tint: NSColor, canCheck: Bool) {
+        let isOwnApp = subject.url == Bundle.main.bundleURL
+        let canVerify = canCheck || (isOwnApp && status(of: permission) != .unknown)
         let mode: SettingsGuide.Mode = switch permission {
         case .systemExtension, .backgroundItem: .toggle(permission, confirmManually: !canVerify)
         default: .drag(permission, confirmManually: !canVerify)
         }
         SystemSettings.open(permission.settingsURL)
-        guide.start(mode, appURL: appURL, tint: tint, relaunch: relaunchChoice)
+        guide.start(mode, subject: subject, tint: tint, relaunch: relaunchChoice)
     }
 
     private func waitForGrant() async -> PermissionResult {

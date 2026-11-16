@@ -23,6 +23,19 @@ final class SettingsGuide {
         }
     }
 
+    /// The bundle being granted, and what the guide calls and draws it as.
+    struct Subject {
+        var url: URL
+        var name: String?
+        var icon: NSImage?
+
+        var displayName: String {
+            name ?? FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+        }
+
+        var displayIcon: NSImage { icon ?? NSWorkspace.shared.icon(forFile: url.path) }
+    }
+
     var onCancel: (() -> Void)?
     var onDone: (() -> Void)?
     /// The "Quit & Reopen" alert closed and the app is still running: the user clicked
@@ -53,12 +66,13 @@ final class SettingsGuide {
         prompts.resume()
     }
 
-    func start(_ mode: Mode, appURL: URL, tint: NSColor, relaunch: RelaunchChoice) {
+    func start(_ mode: Mode, subject: Subject, tint: NSColor, relaunch: RelaunchChoice) {
         stop()
         self.mode = mode
         self.relaunch = relaunch
-        appName = FileManager.default.displayName(atPath: appURL.path).replacingOccurrences(of: ".app", with: "")
-        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+        appName = subject.displayName
+        let appURL = subject.url
+        let icon = subject.displayIcon
         let name = mode.permission.displayName
 
         let sidecar: SidecarPanel
