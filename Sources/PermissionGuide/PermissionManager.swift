@@ -32,7 +32,9 @@ public final class PermissionManager {
 
     @ObservationIgnored private let guide = SettingsGuide()
     @ObservationIgnored private var continuation: CheckedContinuation<PermissionResult, Never>?
-    @ObservationIgnored private var pendingCheck: (@MainActor () -> Bool)?
+    @ObservationIgnored private var pendingCheck: (@MainActor () async -> Bool)?
+    /// The `pendingCheck` call in flight, if any.
+    @ObservationIgnored private var pendingCheckTask: Task<Void, Never>?
     @ObservationIgnored private var extensionQueries: Set<SystemExtension> = []
     @ObservationIgnored private var lastExtensionQuery = Date.distantPast
     /// Grants a fresh process has seen that this one can't until it relaunches.
@@ -105,9 +107,13 @@ public final class PermissionManager {
     public func request(
         _ permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
+        named name: String? = nil,
+        icon: NSImage? = nil,
+        alreadyListed: Bool = false,
         tint: NSColor = .controlAccentColor,
-        isGranted: (@MainActor () -> Bool)? = nil
+        isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
+        let subject = SettingsGuide.Subject(url: appURL, name: name, icon: icon)
         if case .backgroundItem(let plist) = permission {
             let service = SMAppService.daemon(plistName: plist)
             if service.status == .notRegistered || service.status == .notFound {
@@ -116,10 +122,10 @@ public final class PermissionManager {
                     if service.status != .requiresApproval { return .failed(error) }
                 }
             }
-            return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, alreadyListed: alreadyListed, tint: tint, isGranted: isGranted)
         }
         guard case .systemExtension(let ext) = permission else {
-            return await guide(to: permission, dragging: appURL, tint: tint, isGranted: isGranted)
+            return await guide(to: permission, dragging: appURL, named: name, icon: icon, alreadyListed: alreadyListed, tint: tint, isGranted: isGranted)
         }
         if status(of: permission) == .granted { return .granted }
 
@@ -128,7 +134,7 @@ public final class PermissionManager {
             guard let self, self.pending == permission else { return }
             switch event {
             case .needsUserApproval:
-                self.showGuide(for: permission, appURL: appURL, tint: tint, isGranted: isGranted)
+                self.showGuide(for: permission, subject: subject, alreadyListed: alreadyListed, tint: tint, canCheck: isGranted != nil)
             case .activated:
                 self.set(.granted, for: permission)
                 self.finish(.granted)
@@ -144,26 +150,39 @@ public final class PermissionManager {
     /// Opens System Settings at the permission's pane and walks the user through it,
     /// without requesting anything from macOS.
     ///
-    /// For a privacy pane, the user drags `appURL` into the highlighted list. For a system
-    /// extension, the user turns on its switch; use this when your app submits its own
+    /// For a privacy pane, the user drags `appURL` into the highlighted list, or turns on
+    /// its switch there when `alreadyListed`. For a system extension, the user turns on
+    /// its switch; use this when your app submits its own
     /// `OSSystemExtensionRequest` and gets `requestNeedsUserApproval`.
     ///
     /// - Parameters:
     ///   - appURL: The bundle the user drags into System Settings. Pass a helper's URL when
     ///     a helper, not the main app, is the process that needs the permission.
+    ///   - name: What the guide calls that bundle. Defaults to its name in Finder, which
+    ///     for a system extension is its file name.
+    ///   - icon: The icon the guide shows for it. Defaults to the bundle's own, which is a
+    ///     generic one for a helper that ships without an icon.
+    ///   - alreadyListed: Whether the privacy pane's list already holds the bundle,
+    ///     switched off, so the user turns on its switch instead of dragging it in. macOS
+    ///     lists some helpers itself once they ask for access, such as an Endpoint
+    ///     Security extension in Full Disk Access.
     ///   - tint: Color of the highlight and sidecar border.
     ///   - isGranted: How to tell the permission was granted, for when the default check
-    ///     can't see it (such as a helper's permissions). When neither this nor macOS can
-    ///     report status, the sidecar shows a Done button instead.
+    ///     can't see it (such as a helper's permissions). It can be `async`, to ask the
+    ///     helper over IPC, and is called again once the last call has returned. When
+    ///     neither this nor macOS can report status, the sidecar shows a Done button instead.
     /// - Returns: How the guide ended. See `PermissionResult`.
     @discardableResult
     public func guide(
         to permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
+        named name: String? = nil,
+        icon: NSImage? = nil,
+        alreadyListed: Bool = false,
         tint: NSColor = .controlAccentColor,
-        isGranted: (@MainActor () -> Bool)? = nil
+        isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
-        if let isGranted, isGranted() { return .granted }
+        if let isGranted, await isGranted() { return .granted }
         let isOwnApp = isGranted == nil && appURL == Bundle.main.bundleURL
         if isOwnApp, status(of: permission) == .granted { return .granted }
         // Granted earlier, but this process can't see it until it relaunches.
@@ -173,7 +192,8 @@ public final class PermissionManager {
         }
 
         begin(permission, isGranted: isGranted)
-        showGuide(for: permission, appURL: appURL, tint: tint, isGranted: isGranted)
+        let subject = SettingsGuide.Subject(url: appURL, name: name, icon: icon)
+        showGuide(for: permission, subject: subject, alreadyListed: alreadyListed, tint: tint, canCheck: isGranted != nil)
         return await waitForGrant()
     }
 
@@ -182,21 +202,18 @@ public final class PermissionManager {
         finish(.cancelled)
     }
 
-    private func begin(_ permission: Permission, isGranted: (@MainActor () -> Bool)?) {
+    private func begin(_ permission: Permission, isGranted: (@MainActor () async -> Bool)?) {
         finish(.cancelled, activate: false)
         pending = permission
         pendingCheck = isGranted
     }
 
-    private func showGuide(for permission: Permission, appURL: URL, tint: NSColor, isGranted: (@MainActor () -> Bool)?) {
-        let isOwnApp = appURL == Bundle.main.bundleURL
-        let canVerify = isGranted != nil || (isOwnApp && status(of: permission) != .unknown)
-        let mode: SettingsGuide.Mode = switch permission {
-        case .systemExtension, .backgroundItem: .toggle(permission, confirmManually: !canVerify)
-        default: .drag(permission, confirmManually: !canVerify)
-        }
+    private func showGuide(for permission: Permission, subject: SettingsGuide.Subject, alreadyListed: Bool, tint: NSColor, canCheck: Bool) {
+        let isOwnApp = subject.url == Bundle.main.bundleURL
+        let canVerify = canCheck || (isOwnApp && status(of: permission) != .unknown)
+        let mode = SettingsGuide.Mode(permission, alreadyListed: alreadyListed, confirmManually: !canVerify)
         SystemSettings.open(permission.settingsURL)
-        guide.start(mode, appURL: appURL, tint: tint, relaunch: relaunchChoice)
+        guide.start(mode, subject: subject, tint: tint, relaunch: relaunchChoice)
     }
 
     private func waitForGrant() async -> PermissionResult {
@@ -211,15 +228,36 @@ public final class PermissionManager {
         if statuses[permission] != status { statuses[permission] = status }
     }
 
-    private func isPendingGranted(_ permission: Permission) -> Bool {
-        pendingCheck?() ?? (status(of: permission) == .granted)
+    private func isPendingGranted(_ permission: Permission) async -> Bool {
+        if let pendingCheck { return await pendingCheck() }
+        return status(of: permission) == .granted
     }
 
     /// Finishes the request once its permission is granted, unless System Settings'
     /// "Quit & Reopen" alert is up (or likely about to be): the guide stays to walk the
     /// user through it, and finishes when it closes (`relaunchDeferred`).
     private func checkPending() {
-        guard let pending, isPendingGranted(pending) else {
+        guard let pending else {
+            probedGrantSince = nil
+            return
+        }
+        guard let pendingCheck else {
+            pendingChecked(pending, granted: status(of: pending) == .granted)
+            return
+        }
+        // One call at a time: an IPC round trip can outlast a poll.
+        guard pendingCheckTask == nil else { return }
+        pendingCheckTask = Task {
+            let granted = await pendingCheck()
+            // Cancelled when the request it was checking for finished.
+            guard !Task.isCancelled else { return }
+            pendingCheckTask = nil
+            pendingChecked(pending, granted: granted)
+        }
+    }
+
+    private func pendingChecked(_ pending: Permission, granted: Bool) {
+        guard granted else {
             probedGrantSince = nil
             return
         }
@@ -243,7 +281,9 @@ public final class PermissionManager {
             guard pending == permission, !isTerminating else { return }
             await probe(force: true)?.value
             guard pending == permission, !isTerminating else { return }
-            if isPendingGranted(permission) {
+            let granted = await isPendingGranted(permission)
+            guard pending == permission, !isTerminating else { return }
+            if granted {
                 finish(.granted)
             } else if pendingCheck != nil || status(of: permission) != .unknown {
                 // It didn't go through after all (the user switched it back off), so
@@ -315,6 +355,8 @@ public final class PermissionManager {
         guide.stop()
         pending = nil
         pendingCheck = nil
+        pendingCheckTask?.cancel()
+        pendingCheckTask = nil
         probedGrantSince = nil
         continuation?.resume(returning: result)
         continuation = nil

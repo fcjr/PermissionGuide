@@ -7,7 +7,7 @@ how the guide finds windows and prompts see [how-it-works.md](how-it-works.md).
 
 | Permission | Pane | Status check |
 | --- | --- | --- |
-| `.fullDiskAccess` | Full Disk Access | ✓ (may need a relaunch) |
+| `.fullDiskAccess` | Full Disk Access | ✓ (may need a relaunch; not with SIP off) |
 | `.screenRecording` | Screen & System Audio Recording | ✓ (may need a relaunch) |
 | `.accessibility` | Accessibility | ✓ |
 | `.inputMonitoring` | Input Monitoring | ✓ (may need a relaunch) |
@@ -65,12 +65,17 @@ by themselves.
 switch permissions.status(of: .fullDiskAccess) {
 case .granted: …
 case .notGranted: …
-case .unknown: …   // macOS can't report it (Developer Tools, App Management)
+case .unknown: …   // can't be checked (Developer Tools, App Management)
 }
 
 permissions.statuses   // [Permission: PermissionStatus] for every tracked permission
 permissions.pending    // the permission whose guide is showing, if any
 ```
+
+Full Disk Access also reads `.unknown` on a Mac with System Integrity Protection turned
+off. The check opens files that only Full Disk Access can open, and with SIP off every
+process can open them. The guide shows a Done button there, as it does for the
+permissions macOS can't report.
 
 Checking never shows a system prompt.
 
@@ -104,6 +109,9 @@ Options:
 await permissions.request(
     .screenRecording,
     dragging: helperURL,                 // bundle to drag in; defaults to your app
+    named: "Recorder",                   // what the guide calls it; defaults to its Finder name
+    icon: recorderIcon,                  // defaults to the bundle's own icon
+    alreadyListed: true,                 // the list has it; switch it on instead of dragging
     tint: .systemPurple,                 // highlight and panel color
     isGranted: { helper.canRecord }      // custom check, for when the default can't see it
 )
@@ -184,8 +192,46 @@ await permissions.request(
 )
 ```
 
+`isGranted` can be `async`, so it can wait for the helper's answer:
+
+```swift
+isGranted: { await helper.hasFullDiskAccess() }
+```
+
+PermissionGuide calls it once before showing the guide and then on every poll, waiting
+for each call to return before making the next.
+
 Without `isGranted`, the panel shows a Done button, because PermissionGuide can't tell when
 the helper has been granted.
+
+The panel shows the helper's own icon and Finder name. A helper with no icon gets a
+generic one, and a system extension's name is its file name
+(`com.example.app.monitor.systemextension`). Pass `named:` and `icon:` to show something
+the user recognises:
+
+```swift
+await permissions.request(
+    .fullDiskAccess,
+    dragging: helperURL,
+    named: "Example",
+    icon: NSApp.applicationIconImage,
+    isGranted: { await helper.hasFullDiskAccess() }
+)
+```
+
+macOS adds some helpers to a privacy list by itself, switched off, once they ask for
+access. There is nothing to drag then, so pass `alreadyListed: true` and the guide
+highlights the list and tells the user to turn on the helper's switch:
+
+```swift
+await permissions.request(
+    .fullDiskAccess,
+    dragging: helperURL,
+    named: "Example",
+    alreadyListed: true,
+    isGranted: { await helper.hasFullDiskAccess() }
+)
+```
 
 ## System extensions
 
@@ -257,9 +303,10 @@ func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
 
 A VPN also has to save its configuration (`NETunnelProviderManager.saveToPreferences`),
 which shows a separate "Add VPN Configurations" alert that PermissionGuide doesn't guide.
-Endpoint Security clients usually also need `.fullDiskAccess`, granted to the extension.
-Pass the extension's URL (`vpn.embeddedURL()`) as `dragging:` along with an `isGranted:`
-check.
+Endpoint Security clients usually also need `.fullDiskAccess`, granted to the extension
+and not to your app. Pass the extension's URL (`monitor.embeddedURL()`) as `dragging:`
+along with an `isGranted:` check that asks the extension, and `named:` and `icon:` so the
+panel shows your app instead of the extension's file name. See [Helpers](#helpers).
 
 ## Background items
 
@@ -286,8 +333,8 @@ many items sit above it. The app has to be signed (Developer ID) for macOS to re
 | `status(of:)`, `statuses` | Current status: `.granted`, `.notGranted` or `.unknown` |
 | `pending` | The permission whose guide is showing |
 | `needsRelaunch(_:)` | Granted, but the app must relaunch to use it |
-| `request(_:dragging:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
-| `guide(to:dragging:tint:isGranted:)` | Guides the user without requesting anything |
+| `request(_:dragging:named:icon:alreadyListed:tint:isGranted:)` | Guides the user; installs system extensions and registers background items first |
+| `guide(to:dragging:named:icon:alreadyListed:tint:isGranted:)` | Guides the user without requesting anything |
 | `cancel()` | Closes the guide; the pending call returns `.cancelled` |
 | `refresh()` | Re-checks status now |
 | `Permission.displayName`, `.settingsURL` | Pane name and deep link |
