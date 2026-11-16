@@ -180,6 +180,18 @@ private let password = SystemSettings.Prompt.authentication(NSRect(x: 200, y: 15
     }
 }
 
+@Suite @MainActor struct ManagerTests {
+    @Test func anAsyncCheckThatAlreadyPassesSkipsTheGuide() async {
+        let manager = PermissionManager(permissions: [])
+        let result = await manager.guide(to: .accessibility, isGranted: {
+            await Task.yield()
+            return true
+        })
+        #expect(result.isGranted)
+        #expect(manager.pending == nil)
+    }
+}
+
 @Suite struct SystemExtensionSetupTests {
     private static let networkEntitlement = "com.apple.developer.networking.networkextension"
 

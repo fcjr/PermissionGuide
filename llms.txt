@@ -93,7 +93,7 @@ You are done when the app builds, the screen shows each tracked permission's sta
 
 ## Cases that need more than the defaults
 
-A helper process needs the permission. Pass the helper's bundle to drag and a check that can see the helper's permissions, such as an IPC call. Without `isGranted` the guide shows a Done button.
+A helper process needs the permission. Pass the helper's bundle to drag and a check that can see the helper's permissions, such as an IPC call. `isGranted` can be `async`. Without it the guide shows a Done button.
 
 ```swift
 await permissions.request(

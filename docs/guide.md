@@ -189,6 +189,15 @@ await permissions.request(
 )
 ```
 
+`isGranted` can be `async`, so it can wait for the helper's answer:
+
+```swift
+isGranted: { await helper.hasFullDiskAccess() }
+```
+
+PermissionGuide calls it once before showing the guide and then on every poll, waiting
+for each call to return before making the next.
+
 Without `isGranted`, the panel shows a Done button, because PermissionGuide can't tell when
 the helper has been granted.
 

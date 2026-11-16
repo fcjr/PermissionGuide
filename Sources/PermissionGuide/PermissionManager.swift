@@ -32,7 +32,9 @@ public final class PermissionManager {
 
     @ObservationIgnored private let guide = SettingsGuide()
     @ObservationIgnored private var continuation: CheckedContinuation<PermissionResult, Never>?
-    @ObservationIgnored private var pendingCheck: (@MainActor () -> Bool)?
+    @ObservationIgnored private var pendingCheck: (@MainActor () async -> Bool)?
+    /// The `pendingCheck` call in flight, if any.
+    @ObservationIgnored private var pendingCheckTask: Task<Void, Never>?
     @ObservationIgnored private var extensionQueries: Set<SystemExtension> = []
     @ObservationIgnored private var lastExtensionQuery = Date.distantPast
     /// Grants a fresh process has seen that this one can't until it relaunches.
@@ -106,7 +108,7 @@ public final class PermissionManager {
         _ permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
         tint: NSColor = .controlAccentColor,
-        isGranted: (@MainActor () -> Bool)? = nil
+        isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
         if case .backgroundItem(let plist) = permission {
             let service = SMAppService.daemon(plistName: plist)
@@ -153,17 +155,18 @@ public final class PermissionManager {
     ///     a helper, not the main app, is the process that needs the permission.
     ///   - tint: Color of the highlight and sidecar border.
     ///   - isGranted: How to tell the permission was granted, for when the default check
-    ///     can't see it (such as a helper's permissions). When neither this nor macOS can
-    ///     report status, the sidecar shows a Done button instead.
+    ///     can't see it (such as a helper's permissions). It can be `async`, to ask the
+    ///     helper over IPC, and is called again once the last call has returned. When
+    ///     neither this nor macOS can report status, the sidecar shows a Done button instead.
     /// - Returns: How the guide ended. See `PermissionResult`.
     @discardableResult
     public func guide(
         to permission: Permission,
         dragging appURL: URL = Bundle.main.bundleURL,
         tint: NSColor = .controlAccentColor,
-        isGranted: (@MainActor () -> Bool)? = nil
+        isGranted: (@MainActor () async -> Bool)? = nil
     ) async -> PermissionResult {
-        if let isGranted, isGranted() { return .granted }
+        if let isGranted, await isGranted() { return .granted }
         let isOwnApp = isGranted == nil && appURL == Bundle.main.bundleURL
         if isOwnApp, status(of: permission) == .granted { return .granted }
         // Granted earlier, but this process can't see it until it relaunches.
@@ -182,13 +185,13 @@ public final class PermissionManager {
         finish(.cancelled)
     }
 
-    private func begin(_ permission: Permission, isGranted: (@MainActor () -> Bool)?) {
+    private func begin(_ permission: Permission, isGranted: (@MainActor () async -> Bool)?) {
         finish(.cancelled, activate: false)
         pending = permission
         pendingCheck = isGranted
     }
 
-    private func showGuide(for permission: Permission, appURL: URL, tint: NSColor, isGranted: (@MainActor () -> Bool)?) {
+    private func showGuide(for permission: Permission, appURL: URL, tint: NSColor, isGranted: (@MainActor () async -> Bool)?) {
         let isOwnApp = appURL == Bundle.main.bundleURL
         let canVerify = isGranted != nil || (isOwnApp && status(of: permission) != .unknown)
         let mode: SettingsGuide.Mode = switch permission {
@@ -211,15 +214,36 @@ public final class PermissionManager {
         if statuses[permission] != status { statuses[permission] = status }
     }
 
-    private func isPendingGranted(_ permission: Permission) -> Bool {
-        pendingCheck?() ?? (status(of: permission) == .granted)
+    private func isPendingGranted(_ permission: Permission) async -> Bool {
+        if let pendingCheck { return await pendingCheck() }
+        return status(of: permission) == .granted
     }
 
     /// Finishes the request once its permission is granted, unless System Settings'
     /// "Quit & Reopen" alert is up (or likely about to be): the guide stays to walk the
     /// user through it, and finishes when it closes (`relaunchDeferred`).
     private func checkPending() {
-        guard let pending, isPendingGranted(pending) else {
+        guard let pending else {
+            probedGrantSince = nil
+            return
+        }
+        guard let pendingCheck else {
+            pendingChecked(pending, granted: status(of: pending) == .granted)
+            return
+        }
+        // One call at a time: an IPC round trip can outlast a poll.
+        guard pendingCheckTask == nil else { return }
+        pendingCheckTask = Task {
+            let granted = await pendingCheck()
+            // Cancelled when the request it was checking for finished.
+            guard !Task.isCancelled else { return }
+            pendingCheckTask = nil
+            pendingChecked(pending, granted: granted)
+        }
+    }
+
+    private func pendingChecked(_ pending: Permission, granted: Bool) {
+        guard granted else {
             probedGrantSince = nil
             return
         }
@@ -243,7 +267,9 @@ public final class PermissionManager {
             guard pending == permission, !isTerminating else { return }
             await probe(force: true)?.value
             guard pending == permission, !isTerminating else { return }
-            if isPendingGranted(permission) {
+            let granted = await isPendingGranted(permission)
+            guard pending == permission, !isTerminating else { return }
+            if granted {
                 finish(.granted)
             } else if pendingCheck != nil || status(of: permission) != .unknown {
                 // It didn't go through after all (the user switched it back off), so
@@ -315,6 +341,8 @@ public final class PermissionManager {
         guide.stop()
         pending = nil
         pendingCheck = nil
+        pendingCheckTask?.cancel()
+        pendingCheckTask = nil
         probedGrantSince = nil
         continuation?.resume(returning: result)
         continuation = nil
